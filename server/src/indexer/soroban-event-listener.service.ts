@@ -1,6 +1,6 @@
 import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { PinoLogger, InjectPinoLogger } from 'nestjs-pino';
+import { PinoLogger } from 'nestjs-pino';
 
 @Injectable()
 export class SorobanEventListenerService implements OnModuleInit, OnModuleDestroy {
@@ -13,15 +13,21 @@ export class SorobanEventListenerService implements OnModuleInit, OnModuleDestro
 
   constructor(
     private readonly configService: ConfigService,
-    @InjectPinoLogger(SorobanEventListenerService.name)
     private readonly logger: PinoLogger,
-  ) {}
+  ) {
+    this.logger.setContext(SorobanEventListenerService.name);
+  }
 
   async onModuleInit() {
+    const enabled = this.configService.get<boolean>('soroban.enabled') ?? true;
+    if (!enabled) {
+      this.logger.warn('Soroban event listener disabled');
+      return;
+    }
+
     this.StellarSdk = await import('@stellar/stellar-sdk');
-    const { Server } = await import('@stellar/stellar-sdk/rpc');
     const rpcUrl = this.configService.get<string>('soroban.rpcUrl');
-    this.rpcServer = new Server(rpcUrl);
+    this.rpcServer = new this.StellarSdk.rpc.Server(rpcUrl);
     this.logger.info({ rpcUrl }, 'Soroban Event Listener initialized');
     await this.startListening();
   }

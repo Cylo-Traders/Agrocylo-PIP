@@ -1,0 +1,33 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model IndexerState {
+  id                  String   @id @default("soroban")
+  lastProcessedLedger Int      @default(0) @map("last_processed_ledger")
+  updatedAt           DateTime @default(now()) @updatedAt @map("updated_at")
+
+  @@map("indexer_states")
+}
+
+model BlockchainEvent {
+  id          String    @id @default(uuid())
+  eventId     String    @unique @map("event_id")
+  contractId  String?   @map("contract_id")
+  type        String
+  ledger      Int
+  txHash      String?   @map("tx_hash")
+  topic       Json?
+  payload     Json?
+  receivedAt  DateTime  @default(now()) @map("received_at")
+  processedAt DateTime? @map("processed_at")
+
+  @@index([contractId, ledger])
+  @@index([ledger])
+  @@map("blockchain_events")
+}

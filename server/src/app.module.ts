@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from './config/config.module';
 import { LoggerModule } from './common/logger/logger.module';
+import { DatabaseModule } from './database/database.module';
 import { HealthModule } from './modules/health/health.module';
 import { IndexerModule } from './indexer/indexer.module';
 
@@ -9,6 +10,12 @@ import { IndexerModule } from './indexer/indexer.module';
  * grows (e.g. database, indexer, websocket gateways).
  */
 @Module({
-  imports: [ConfigModule, LoggerModule, HealthModule, IndexerModule],
+  imports: [
+    ConfigModule,
+    LoggerModule,
+    DatabaseModule,
+    HealthModule,
+    IndexerModule,
+  ],
 })
 export class AppModule {}
