@@ -12,8 +12,19 @@ export const envValidationSchema = Joi.object({
   LOG_LEVEL: Joi.string()
     .valid('trace', 'debug', 'info', 'warn', 'error', 'fatal')
     .default('info'),
-  SOROBAN_RPC_URL: Joi.string().uri().required(),
-  SOROBAN_NETWORK_PASSPHRASE: Joi.string().required(),
+  DATABASE_URL: Joi.string()
+    .uri({ scheme: [/postgres(?:ql)?/] })
+    .default(
+      'postgresql://postgres:postgres@localhost:5432/agrocylo_pip?schema=public',
+    ),
+  DATABASE_CONNECT_ON_STARTUP: Joi.boolean().truthy('true').falsy('false'),
+  INDEXER_ENABLED: Joi.boolean().truthy('true').falsy('false'),
+  SOROBAN_RPC_URL: Joi.string()
+    .uri()
+    .default('https://soroban-testnet.stellar.org'),
+  SOROBAN_NETWORK_PASSPHRASE: Joi.string().default(
+    'Test SDF Network ; September 2015',
+  ),
   PRODUCTION_ESCROW_CONTRACT_ID: Joi.string().allow('').default(''),
   ESCROW_CONTRACT_ID: Joi.string().allow('').default(''),
   EVENT_POLL_INTERVAL_MS: Joi.number().min(1000).default(5000),
