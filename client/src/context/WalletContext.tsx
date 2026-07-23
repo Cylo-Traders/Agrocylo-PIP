@@ -12,6 +12,7 @@ import {
   getAddress,
   signTransaction as freighterSign,
 } from '@stellar/freighter-api';
+import { NETWORK_PASSPHRASE } from '../lib/soroban/config';
 
 const STORAGE_KEY = 'agrocylo:wallet:address';
 
@@ -24,6 +25,10 @@ interface WalletState {
   disconnect: () => void;
   clearError: () => void;
   signTransaction: (xdr: string) => Promise<string>;
+}
+
+export function walletSignOptions() {
+  return { networkPassphrase: NETWORK_PASSPHRASE };
 }
 
 const WalletContext = createContext<WalletState | null>(null);
@@ -104,7 +109,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         throw new Error('Wallet not connected');
       }
       const result = await freighterSign(xdr, {
-        networkPassphrase: 'Test SDF Network ; September 2015',
+        ...walletSignOptions(),
       });
       return result.signedTxXdr;
     },
