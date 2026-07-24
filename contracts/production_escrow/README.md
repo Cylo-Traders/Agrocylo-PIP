@@ -55,6 +55,21 @@ cargo build --target wasm32-unknown-unknown --release -p production_escrow
 cargo test -p production_escrow
 ```
 
+Property tests use 16 cases per property for a fast local run. Increase the
+case count with `PROPTEST_CASES`:
+
+```bash
+PROPTEST_CASES=64 cargo test -p production_escrow prop_
+```
+
+When proptest reports a failing RNG seed, reproduce it with the same test name
+and `PROPTEST_RNG_SEED` (the minimized case is also saved under
+`proptest-regressions`):
+
+```bash
+PROPTEST_RNG_SEED=<seed> cargo test -p production_escrow prop_claim_refund -- --nocapture
+```
+
 ## Project Structure
 
 ```

@@ -38,3 +38,8 @@ jobs:
 
       - name: Run tests
         run: cargo test
+
+      - name: Run escrow property tests with extended cases
+        env:
+          PROPTEST_CASES: 64
+        run: cargo test -p production_escrow prop_

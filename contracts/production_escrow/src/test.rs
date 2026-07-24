@@ -1,11 +1,15 @@
 #![cfg(test)]
 
+extern crate std;
+
 use super::*;
+use proptest::{collection, prelude::*, test_runner::Config as ProptestConfig};
 use soroban_sdk::{
     testutils::{Address as _, Events},
     token::{Client as TokenClient, StellarAssetClient},
     Address, Env, IntoVal, Symbol, Vec,
 };
+use std::vec::Vec as StdVec;
 
 // ─── shared helpers ──────────────────────────────────────────────────────────
 
@@ -1414,4 +1418,245 @@ fn test_get_admin_returns_initialized_admin() {
 
     let stored_admin = client.get_admin();
     assert_eq!(stored_admin, admin);
+}
+
+// ─── property tests ──────────────────────────────────────────────────────────
+
+fn property_test_config() -> ProptestConfig {
+    let mut config = ProptestConfig::default();
+    if std::env::var_os("PROPTEST_CASES").is_none() {
+        config.cases = 16;
+    }
+    config
+}
+
+fn contribution_strategy() -> impl Strategy<Value = StdVec<i128>> {
+    collection::vec(1i128..=1_000_000i128, 1..=12)
+}
+
+fn property_campaign(
+    contributions: &[i128],
+) -> (Env, Address, Address, Address, StdVec<Address>, u64) {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, ProductionEscrowContract);
+    let client = ProductionEscrowContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let farmer = Address::generate(&env);
+    let campaign_id = 1u64;
+    let (token, sac) = create_token(&env, &admin);
+    let total = contributions
+        .iter()
+        .try_fold(0i128, |sum, amount| sum.checked_add(*amount))
+        .expect("generated contributions must fit in i128");
+
+    client.initialize(&admin);
+    client.create_campaign(
+        &campaign_id,
+        &farmer,
+        &total,
+        &token,
+        &1000000u64,
+        &Symbol::new(&env, "wheat"),
+    );
+    let investors = contributions
+        .iter()
+        .map(|amount| {
+            let investor = Address::generate(&env);
+            sac.mint(&investor, amount);
+            client.fund_campaign(&campaign_id, &investor, amount);
+            investor
+        })
+        .collect();
+
+    (env, contract_id, token, farmer, investors, campaign_id)
+}
+
+proptest! {
+    #![proptest_config(property_test_config())]
+
+    #[test]
+    fn prop_claim_refund_never_exceeds_refundable_pool(
+        contributions in contribution_strategy(),
+    ) {
+        let total: i128 = contributions.iter().sum();
+        let (env, contract_id, token_id, _, investors, campaign_id) =
+            property_campaign(&contributions);
+        let client = ProductionEscrowContractClient::new(&env, &contract_id);
+        let token = TokenClient::new(&env, &token_id);
+
+        client.mark_failed(&campaign_id);
+        let refundable = client.get_campaign(&campaign_id).refundable;
+        let mut claimed = 0i128;
+        for investor in &investors {
+            let before = token.balance(investor);
+            client.claim_refund(&campaign_id, investor);
+            claimed += token.balance(investor) - before;
+            prop_assert!(client.try_claim_refund(&campaign_id, investor).is_err());
+        }
+
+        prop_assert!(claimed <= refundable);
+        prop_assert_eq!(claimed, total);
+        prop_assert_eq!(token.balance(&contract_id), refundable - claimed);
+    }
+
+    #[test]
+    fn prop_claim_return_never_exceeds_returnable_pool(
+        contributions in contribution_strategy(),
+        payout_seed in any::<u64>(),
+    ) {
+        let total: i128 = contributions.iter().sum();
+        let farmer_payout = i128::from(payout_seed) % total;
+        let (env, contract_id, token_id, farmer, investors, campaign_id) =
+            property_campaign(&contributions);
+        let client = ProductionEscrowContractClient::new(&env, &contract_id);
+        let token = TokenClient::new(&env, &token_id);
+
+        client.report_harvest(&campaign_id, &farmer, &Symbol::new(&env, "good"));
+        client.settle_campaign(&campaign_id, &farmer, &farmer_payout);
+        let returnable = client.get_campaign(&campaign_id).returnable;
+        let mut claimed = 0i128;
+        for investor in &investors {
+            let before = token.balance(investor);
+            if client.try_claim_return(&campaign_id, investor).is_ok() {
+                claimed += token.balance(investor) - before;
+                prop_assert!(client.try_claim_return(&campaign_id, investor).is_err());
+            }
+        }
+
+        prop_assert!(claimed <= returnable);
+        prop_assert_eq!(token.balance(&contract_id), returnable - claimed);
+    }
+
+    #[test]
+    fn prop_partial_settlement_conserves_held_funds(
+        contributions in contribution_strategy(),
+        payout_seed in any::<u64>(),
+    ) {
+        let total: i128 = contributions.iter().sum();
+        prop_assume!(total > 1);
+        let payout = 1 + i128::from(payout_seed) % (total - 1);
+        let (env, contract_id, _, _, investors, campaign_id) = property_campaign(&contributions);
+        let client = ProductionEscrowContractClient::new(&env, &contract_id);
+
+        client.open_dispute(
+            &campaign_id,
+            &investors[0],
+            &Symbol::new(&env, "Delay"),
+        );
+        client.resolve_dispute(
+            &campaign_id,
+            &DisputeResolution::PartialSettlement,
+            &payout,
+        );
+
+        let campaign = client.get_campaign(&campaign_id);
+        prop_assert_eq!(campaign.released + campaign.refundable, total);
+        prop_assert_eq!(campaign.released, payout);
+        prop_assert_eq!(campaign.refundable, total - payout);
+    }
+
+    #[test]
+    fn prop_truncation_dust_stays_in_contract(
+        contributions in contribution_strategy(),
+        payout_seed in any::<u64>(),
+    ) {
+        let total: i128 = contributions.iter().sum();
+        prop_assume!(total > 1);
+        let payout = 1 + i128::from(payout_seed) % (total - 1);
+
+        let (refund_env, refund_contract, refund_token_id, _, refund_investors, campaign_id) =
+            property_campaign(&contributions);
+        let refund_client = ProductionEscrowContractClient::new(&refund_env, &refund_contract);
+        let refund_token = TokenClient::new(&refund_env, &refund_token_id);
+        refund_client.open_dispute(
+            &campaign_id,
+            &refund_investors[0],
+            &Symbol::new(&refund_env, "Delay"),
+        );
+        refund_client.resolve_dispute(
+            &campaign_id,
+            &DisputeResolution::PartialSettlement,
+            &payout,
+        );
+        let refundable = refund_client.get_campaign(&campaign_id).refundable;
+        let mut refunds_claimed = 0i128;
+        for investor in &refund_investors {
+            let before = refund_token.balance(investor);
+            if refund_client.try_claim_refund(&campaign_id, investor).is_ok() {
+                refunds_claimed += refund_token.balance(investor) - before;
+            }
+        }
+        let refund_dust = refundable - refunds_claimed;
+        prop_assert!(refund_dust >= 0);
+        prop_assert_eq!(refund_token.balance(&refund_contract), payout + refund_dust);
+
+        let (return_env, return_contract, return_token_id, farmer, return_investors, campaign_id) =
+            property_campaign(&contributions);
+        let return_client = ProductionEscrowContractClient::new(&return_env, &return_contract);
+        let return_token = TokenClient::new(&return_env, &return_token_id);
+        return_client.report_harvest(
+            &campaign_id,
+            &farmer,
+            &Symbol::new(&return_env, "good"),
+        );
+        return_client.settle_campaign(&campaign_id, &farmer, &payout);
+        let returnable = return_client.get_campaign(&campaign_id).returnable;
+        let mut returns_claimed = 0i128;
+        for investor in &return_investors {
+            let before = return_token.balance(investor);
+            if return_client.try_claim_return(&campaign_id, investor).is_ok() {
+                returns_claimed += return_token.balance(investor) - before;
+            }
+        }
+        let return_dust = returnable - returns_claimed;
+        prop_assert!(return_dust >= 0);
+        prop_assert_eq!(return_token.balance(&return_contract), return_dust);
+    }
+
+    #[test]
+    fn prop_i128_boundaries_handle_one_large_and_many_small_investors(
+        small_count in 1usize..=15,
+        small_amount in 1i128..=1024,
+        max_gap in 0i128..=1024,
+        invalid_target in i128::MIN..=0i128,
+    ) {
+        let total = i128::MAX - max_gap;
+        let small_total = small_amount * small_count as i128;
+        let mut contributions = std::vec![small_amount; small_count];
+        contributions.push(total - small_total);
+
+        let (env, contract_id, token_id, _, investors, campaign_id) =
+            property_campaign(&contributions);
+        let client = ProductionEscrowContractClient::new(&env, &contract_id);
+        let token = TokenClient::new(&env, &token_id);
+        client.mark_failed(&campaign_id);
+
+        let mut claimed = 0i128;
+        for investor in &investors {
+            let before = token.balance(investor);
+            client.claim_refund(&campaign_id, investor);
+            claimed = claimed
+                .checked_add(token.balance(investor) - before)
+                .expect("claims must fit in the funded total");
+        }
+        prop_assert_eq!(claimed, total);
+        prop_assert_eq!(token.balance(&contract_id), 0);
+
+        let invalid_env = Env::default();
+        invalid_env.mock_all_auths();
+        let invalid_contract = invalid_env.register_contract(None, ProductionEscrowContract);
+        let invalid_client = ProductionEscrowContractClient::new(&invalid_env, &invalid_contract);
+        let admin = Address::generate(&invalid_env);
+        let farmer = Address::generate(&invalid_env);
+        invalid_client.initialize(&admin);
+        prop_assert!(invalid_client.try_create_campaign(
+            &1u64,
+            &farmer,
+            &invalid_target,
+            &Address::generate(&invalid_env),
+            &1000000u64,
+            &Symbol::new(&invalid_env, "wheat"),
+        ).is_err());
+    }
 }

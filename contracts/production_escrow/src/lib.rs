@@ -10,7 +10,7 @@ use events::*;
 use soroban_sdk::{
     contract, contractimpl,
     token::Client as TokenClient,
-    Address, Env, Symbol, Vec,
+    Address, Env, Symbol, Vec, I256,
 };
 
 #[contract]
@@ -19,6 +19,16 @@ pub struct ProductionEscrowContract;
 /// Funds still held in escrow (not yet released, refundable, or returnable).
 fn escrow_held(campaign: &Campaign) -> i128 {
     campaign.total_funded - campaign.released - campaign.refundable - campaign.returnable
+}
+
+/// Computes a non-negative pro-rata share without overflowing intermediate
+/// `i128` multiplication.
+fn pro_rata_share(env: &Env, contributed: i128, pool: i128, total: i128) -> i128 {
+    I256::from_i128(env, contributed)
+        .mul(&I256::from_i128(env, pool))
+        .div(&I256::from_i128(env, total))
+        .to_i128()
+        .expect("pro-rata share exceeds i128")
 }
 
 fn require_admin(env: &Env) {
@@ -411,9 +421,10 @@ impl ProductionEscrowContract {
     /// Investor claims their pro-rata refund from a Resolved or Failed campaign.
     ///
     /// **Rounding / dust policy:** The pro-rata share is computed via integer
-    /// division (`contributed * refundable / total_funded`), which truncates
-    /// toward zero. Any fractional stroop "dust" lost to truncation remains
-    /// permanently in the contract — there is no sweep function to reclaim it.
+    /// division (`contributed * refundable / total_funded`) in `I256`, which
+    /// truncates toward zero without overflowing valid `i128` inputs. Any
+    /// fractional stroop "dust" lost to truncation remains permanently in the
+    /// contract — there is no sweep function to reclaim it.
     /// Across many investors the accumulated dust is typically negligible, but
     /// integrators should be aware that `sum(claimed) <= refundable`.
     pub fn claim_refund(env: Env, campaign_id: u64, investor: Address) {
@@ -429,7 +440,12 @@ impl ProductionEscrowContract {
             panic!("nothing to refund");
         }
 
-        let share = contributed * campaign.refundable / campaign.total_funded;
+        let share = pro_rata_share(
+            &env,
+            contributed,
+            campaign.refundable,
+            campaign.total_funded,
+        );
         if share <= 0 {
             panic!("nothing to refund");
         }
@@ -507,9 +523,10 @@ impl ProductionEscrowContract {
     /// Investor claims their pro-rata share of investor returns from a Settled campaign.
     ///
     /// **Rounding / dust policy:** The pro-rata share is computed via integer
-    /// division (`contributed * returnable / total_funded`), which truncates
-    /// toward zero. Any fractional stroop "dust" lost to truncation remains
-    /// permanently in the contract — there is no sweep function to reclaim it.
+    /// division (`contributed * returnable / total_funded`) in `I256`, which
+    /// truncates toward zero without overflowing valid `i128` inputs. Any
+    /// fractional stroop "dust" lost to truncation remains permanently in the
+    /// contract — there is no sweep function to reclaim it.
     /// Across many investors the accumulated dust is typically negligible, but
     /// integrators should be aware that `sum(claimed) <= returnable`.
     pub fn claim_return(env: Env, campaign_id: u64, investor: Address) {
@@ -523,7 +540,12 @@ impl ProductionEscrowContract {
             panic!("nothing to return");
         }
 
-        let share = contributed * campaign.returnable / campaign.total_funded;
+        let share = pro_rata_share(
+            &env,
+            contributed,
+            campaign.returnable,
+            campaign.total_funded,
+        );
         if share <= 0 {
             panic!("nothing to return");
         }
