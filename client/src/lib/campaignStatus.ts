@@ -31,6 +31,13 @@ export const STATUS_META: Record<CampaignStatusTag, StatusMeta> = {
     text: 'text-status-funded-dark',
     border: 'border-status-funded/20',
   },
+  InProduction: {
+    label: 'In Production',
+    bg: 'bg-status-inproduction',
+    bgLight: 'bg-status-inproduction-light',
+    text: 'text-status-inproduction-dark',
+    border: 'border-status-inproduction/20',
+  },
   Harvested: {
     label: 'Harvested',
     bg: 'bg-status-harvested',
@@ -81,6 +88,7 @@ export const LIFECYCLE_STEPS: {
 }[] = [
   { key: 'funding', label: 'Funding', statuses: ['Active', 'Funding'] },
   { key: 'funded', label: 'Funded', statuses: ['Funded'] },
+  { key: 'production', label: 'In Production', statuses: ['InProduction'] },
   { key: 'harvested', label: 'Harvested', statuses: ['Harvested'] },
   { key: 'settled', label: 'Settled', statuses: ['Settled'] },
 ];

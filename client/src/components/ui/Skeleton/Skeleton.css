@@ -1,0 +1,165 @@
+.ui-skeleton {
+  display: block;
+  border-radius: 0.5rem;
+  background: linear-gradient(
+    90deg,
+    #f0e8d8 0%,
+    #faf6f0 40%,
+    #f0e8d8 80%
+  );
+  background-size: 200% 100%;
+  animation: ui-skeleton-shimmer 1.4s ease-in-out infinite;
+}
+
+.ui-skeleton--badge {
+  width: 5rem;
+  height: 1.25rem;
+  border-radius: 9999px;
+}
+
+.ui-skeleton--chip {
+  width: 4.5rem;
+  height: 1rem;
+  border-radius: 9999px;
+}
+
+.ui-skeleton--title {
+  width: 70%;
+  height: 1.5rem;
+  margin-top: 0.75rem;
+}
+
+.ui-skeleton--title-lg {
+  width: 85%;
+  height: 2rem;
+}
+
+.ui-skeleton--line {
+  width: 100%;
+  height: 0.875rem;
+  margin-top: 0.5rem;
+}
+
+.ui-skeleton--line-short {
+  width: 55%;
+}
+
+.ui-skeleton--bar {
+  width: 100%;
+  height: 0.75rem;
+  margin-top: 1.25rem;
+  border-radius: 9999px;
+}
+
+.ui-skeleton--button {
+  width: 7rem;
+  height: 2.5rem;
+  border-radius: 0.75rem;
+}
+
+.ui-skeleton--button-wide {
+  width: 10rem;
+}
+
+.ui-skeleton--avatar {
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 9999px;
+  flex-shrink: 0;
+}
+
+.ui-skeleton--panel {
+  width: 100%;
+  height: 8rem;
+  margin-top: 1.25rem;
+}
+
+.ui-skeleton--chart {
+  height: 21.25rem;
+  border-radius: 0.75rem;
+  border: 1px solid #e0cfb0;
+}
+
+.ui-skeleton-card,
+.ui-skeleton-row,
+.ui-skeleton-detail {
+  border: 1px solid #e0cfb0;
+  border-radius: 0.75rem;
+  background: #ffffff;
+  box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.06);
+}
+
+.ui-skeleton-card {
+  padding: 1.5rem;
+}
+
+.ui-skeleton-card__header,
+.ui-skeleton-card__footer,
+.ui-skeleton-detail__actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.ui-skeleton-card__footer {
+  margin-top: 1.25rem;
+  justify-content: flex-end;
+}
+
+.ui-skeleton-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+}
+
+.ui-skeleton-row__content {
+  flex: 1;
+  min-width: 0;
+}
+
+.ui-skeleton-detail {
+  padding: 1.5rem;
+}
+
+.ui-skeleton-detail__actions {
+  margin-top: 1.5rem;
+  justify-content: flex-end;
+}
+
+.ui-skeleton-stack,
+.ui-skeleton-grid,
+.ui-skeleton-charts {
+  display: grid;
+  gap: 1rem;
+}
+
+.ui-skeleton-grid {
+  grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
+}
+
+.ui-skeleton-charts {
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 1024px) {
+  .ui-skeleton-charts {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@keyframes ui-skeleton-shimmer {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -100% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-skeleton {
+    animation: none;
+  }
+}

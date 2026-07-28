@@ -8,22 +8,28 @@ datasource db {
 }
 
 model Campaign {
-  id              String   @id
-  farmer          String
-  title           String   @default("")
-  description     String   @default("")
-  targetAmount    BigInt?
-  tokenAddress    String?
-  deadline        BigInt?
-  status          String   @default("Active")
-  totalFunded     BigInt   @default(0)
-  escrowContract  String   @default("")
-  createdAt       BigInt
-  updatedAt       DateTime @default(now()) @updatedAt
+  id                String   @id
+  farmer            String
+  title             String   @default("")
+  description       String   @default("")
+  targetAmount      BigInt?
+  tokenAddress      String?
+  deadline          BigInt?
+  status            String   @default("Active")
+  totalFunded       BigInt   @default(0)
+  escrowContract    String   @default("")
+  trancheCount      Int?
+  harvestOutcome    String?
+  harvestReportedAt BigInt?
+  refundable        BigInt?
+  createdAt         BigInt
+  updatedAt         DateTime @default(now()) @updatedAt
 
-  investments Investment[]
-  orders      Order[]
+  investments  Investment[]
+  orders       Order[]
   transactions Transaction[]
+  disputes     Dispute[]
+  tranches     Tranche[]
 }
 
 model Investment {
@@ -55,6 +61,7 @@ model Order {
 
 model User {
   address     String   @id
+  name        String?
   firstSeenAt BigInt?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -77,4 +84,41 @@ model Transaction {
 
   campaign   Campaign? @relation(fields: [campaignId], references: [id])
   user       User?     @relation(fields: [userId], references: [address])
+}
+
+model Dispute {
+  id                    String   @id
+  campaignId            String
+  opener                String
+  reason                String
+  status                String   @default("Open")
+  resolution            String?
+  admin                 String?
+  payoutToFarmer        BigInt?
+  refundableToInvestors BigInt?
+  openedAt              BigInt
+  resolvedAt            BigInt?
+  ledgerSequence        Int?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  campaign Campaign @relation(fields: [campaignId], references: [id])
+}
+
+model Tranche {
+  id         String   @id
+  campaignId String
+  recipient  String
+  amount     BigInt
+  releasedAt BigInt
+  txHash     String?
+  createdAt  DateTime @default(now())
+
+  campaign Campaign @relation(fields: [campaignId], references: [id])
+}
+
+model IndexerCursor {
+  contractId          String   @id
+  lastProcessedLedger Int
+  updatedAt           DateTime @default(now()) @updatedAt
 }

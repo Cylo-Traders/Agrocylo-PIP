@@ -10,6 +10,12 @@ import { DatabaseModule } from './database/database.module';
  * grows (e.g. database, indexer, websocket gateways).
  */
 @Module({
-  imports: [ConfigModule, LoggerModule, HealthModule, DatabaseModule, IndexerModule],
+  imports: [
+    ConfigModule,
+    LoggerModule,
+    HealthModule,
+    DatabaseModule,
+    IndexerModule,
+  ],
 })
 export class AppModule {}

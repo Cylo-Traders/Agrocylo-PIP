@@ -4,6 +4,7 @@ export type CampaignStatus =
   | 'Active'
   | 'Funding'
   | 'Funded'
+  | 'InProduction'
   | 'Harvested'
   | 'Disputed'
   | 'Resolved'
@@ -14,6 +15,7 @@ export const CAMPAIGN_STATUSES: CampaignStatus[] = [
   'Active',
   'Funding',
   'Funded',
+  'InProduction',
   'Harvested',
   'Disputed',
   'Resolved',
@@ -24,6 +26,7 @@ export const CAMPAIGN_STATUSES: CampaignStatus[] = [
 /** Statuses reached only after a campaign's funding target was met. */
 const TARGET_REACHED_STATUSES = new Set<CampaignStatus>([
   'Funded',
+  'InProduction',
   'Harvested',
   'Disputed',
   'Resolved',
@@ -118,6 +121,13 @@ export function computeAnalyticsMetrics(
       case 'CampaignFunded': {
         const campaign = campaigns.get(event.campaignId);
         if (campaign) campaign.status = 'Funded';
+        break;
+      }
+      case 'TrancheReleased': {
+        const campaign = campaigns.get(event.campaignId);
+        if (campaign && campaign.status === 'Funded') {
+          campaign.status = 'InProduction';
+        }
         break;
       }
       case 'CampaignFailed': {

@@ -3,6 +3,7 @@ import { Route, Routes } from 'react-router-dom';
 import { Playground } from './components/ui/Playground';
 import DesignFoundationsPage from './pages/DesignFoundationsPage';
 import { AnalyticsDashboardPage } from './pages/AnalyticsDashboardPage';
+import { AdminDashboardPage } from './pages/AdminDashboardPage';
 import './App.css';
 
 export default function App() {
@@ -42,6 +43,7 @@ export default function App() {
     <Routes>
       <Route path="/" element={<DesignFoundationsPage />} />
       <Route path="/analytics" element={<AnalyticsDashboardPage />} />
+      <Route path="/admin" element={<AdminDashboardPage />} />
       <Route path="/dev/components" element={<Playground />} />
     </Routes>
   );

@@ -15,7 +15,9 @@
   z-index: 1100;
   width: max-content;
   max-width: 200px;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  box-shadow:
+    0 4px 6px -1px rgba(0, 0, 0, 0.1),
+    0 2px 4px -1px rgba(0, 0, 0, 0.06);
   pointer-events: none;
   animation: ui-tooltip-fade-in 0.15s ease-out;
 }
@@ -98,10 +100,12 @@
 @keyframes ui-tooltip-fade-in {
   from {
     opacity: 0;
-    transform: translate(var(--tw-translate-x, 0), var(--tw-translate-y, 0)) scale(0.95);
+    transform: translate(var(--tw-translate-x, 0), var(--tw-translate-y, 0))
+      scale(0.95);
   }
   to {
     opacity: 1;
-    transform: translate(var(--tw-translate-x, 0), var(--tw-translate-y, 0)) scale(1);
+    transform: translate(var(--tw-translate-x, 0), var(--tw-translate-y, 0))
+      scale(1);
   }
 }

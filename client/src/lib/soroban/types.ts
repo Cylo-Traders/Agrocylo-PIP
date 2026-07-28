@@ -13,6 +13,7 @@ export type CampaignStatusTag =
   | 'Active'
   | 'Funding'
   | 'Funded'
+  | 'InProduction'
   | 'Harvested'
   | 'Disputed'
   | 'Resolved'

@@ -13,6 +13,7 @@ export const STATUS_COLORS: Record<CampaignStatus, string> = {
   Active: '#3a762e',
   Funding: '#2563eb',
   Funded: '#4f46e5',
+  InProduction: '#0d9488',
   Harvested: '#f5bd2a',
   Disputed: '#ea580c',
   Resolved: '#059669',

@@ -35,13 +35,13 @@ Alternative terminal states:
 | `initialize`        | Initialize contract state                       |
 | `create_campaign`   | Create a new campaign (farmer auth required)    |
 | `fund_campaign`     | Fund a campaign (investor auth required)        |
-| `start_production`  | Transition campaign to production phase         |
+| `configure_tranches`| Configure tranches (admin auth required)        |
+| `release_tranche`   | Release next tranche (admin auth required; transitions campaign to `InProduction` on first call) |
 | `report_harvest`    | Report harvest completion                       |
 | `settle_campaign`   | Settle campaign and distribute funds            |
-| `refund_campaign`   | Mark campaign as failed, trigger refunds        |
-| `enter_dispute`     | Enter dispute state                             |
+| `mark_failed`       | Mark campaign as failed, trigger refunds        |
+| `open_dispute`      | Enter dispute state                             |
 | `get_campaign`      | Retrieve campaign details                       |
-| `get_campaign_status` | Retrieve current campaign status              |
 
 ## Building
 

@@ -22,25 +22,25 @@
 
 .ui-badge--variant-success {
   background-color: hsla(142, 70%, 45%, 0.1);
-  color: hsl(142, 70%, 35%);
+  color: hsl(142, 70%, 28%);
   border-color: hsla(142, 70%, 45%, 0.2);
 }
 
 .ui-badge--variant-warning {
   background-color: hsla(38, 92%, 48%, 0.1);
-  color: hsl(38, 92%, 38%);
+  color: hsl(38, 92%, 30%);
   border-color: hsla(38, 92%, 48%, 0.2);
 }
 
 .ui-badge--variant-error {
   background-color: hsla(355, 85%, 55%, 0.1);
-  color: hsl(355, 85%, 45%);
+  color: hsl(355, 85%, 43%);
   border-color: hsla(355, 85%, 55%, 0.2);
 }
 
 .ui-badge--variant-info {
   background-color: hsla(190, 90%, 40%, 0.1);
-  color: hsl(190, 90%, 32%);
+  color: hsl(190, 90%, 28%);
   border-color: hsla(190, 90%, 40%, 0.2);
 }
 
@@ -51,9 +51,16 @@
 }
 
 /* CampaignStatus Specific Status Badges */
+/*
+ * Text lightness values below are deliberately darker than the generic
+ * variant colors (see WCAG audit in docs/accessibility-audit.md). Against a
+ * 10%-alpha fill composited over either a white or soil-50 page background,
+ * the previous values fell as low as 2.75:1; these were solved to guarantee
+ * at least ~4.6:1 (WCAG AA normal-text minimum is 4.5:1) in both contexts.
+ */
 .ui-badge--status-active {
   background-color: hsla(190, 90%, 40%, 0.1);
-  color: hsl(190, 90%, 32%);
+  color: hsl(190, 90%, 28%);
   border-color: hsla(190, 90%, 40%, 0.25);
 }
 
@@ -65,25 +72,31 @@
 
 .ui-badge--status-funded {
   background-color: hsla(142, 70%, 45%, 0.1);
-  color: hsl(142, 70%, 35%);
+  color: hsl(142, 70%, 28%);
   border-color: hsla(142, 70%, 45%, 0.25);
+}
+
+.ui-badge--status-inproduction {
+  background-color: hsla(180, 80%, 45%, 0.1);
+  color: hsl(180, 80%, 26%);
+  border-color: hsla(180, 80%, 45%, 0.25);
 }
 
 .ui-badge--status-harvested {
   background-color: hsla(162, 75%, 40%, 0.1);
-  color: hsl(162, 75%, 30%);
+  color: hsl(162, 75%, 26%);
   border-color: hsla(162, 75%, 40%, 0.25);
 }
 
 .ui-badge--status-disputed {
   background-color: hsla(38, 92%, 48%, 0.1);
-  color: hsl(38, 92%, 38%);
+  color: hsl(38, 92%, 30%);
   border-color: hsla(38, 92%, 48%, 0.25);
 }
 
 .ui-badge--status-resolved {
   background-color: hsla(174, 85%, 40%, 0.1);
-  color: hsl(174, 85%, 30%);
+  color: hsl(174, 85%, 25%);
   border-color: hsla(174, 85%, 40%, 0.25);
 }
 
@@ -95,6 +108,6 @@
 
 .ui-badge--status-failed {
   background-color: hsla(355, 85%, 55%, 0.1);
-  color: hsl(355, 85%, 45%);
+  color: hsl(355, 85%, 43%);
   border-color: hsla(355, 85%, 55%, 0.25);
 }

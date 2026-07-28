@@ -73,15 +73,16 @@ The logical lifecycle maps to the contract statuses as follows:
 
 | Logical Phase | Contract Status | Triggering Escrow Method |
 |---------------|-----------------|--------------------------|
-| **Funding** | `Active` | `create_campaign` |
+| **Funding** | `Active` / `Funding` | `create_campaign` (Active), first contribution (Funding) |
 | **Funded** | `Funded` | `fund_campaign` when target is reached, or admin `complete_funding` after authorized reconciliation |
-| **InProduction** | `Funded` | `release_tranche` (one or more calls) |
-| **Harvested** | `Funded` | `report_harvest` |
+| **InProduction** | `InProduction` | `release_tranche` (first call transitions to `InProduction`) |
+| **Harvested** | `Harvested` | `report_harvest` |
 | **Settled** | `Settled` | `settle_campaign` |
-| **Disputed** | `Disputed` | `open_dispute` |
-| **Resolved** | `Resolved` | `resolve_dispute` |
 
-> **Note:** `Failed` is not a distinct on-chain status. A campaign that never reaches its target by the deadline is considered *Failed* off-chain by the backend/indexer.
+Alternative terminal statuses:
+- **Failed**: Contract Status `Failed`, triggered by admin `mark_failed`. This **is** a distinct on-chain status stored in `Campaign.status`; `CampaignFailed` is emitted and investors can call `claim_refund` to recover funds.
+- **Disputed**: Contract Status `Disputed`, triggered by `open_dispute`
+- **Resolved**: Contract Status `Resolved`, triggered by admin `resolve_dispute`
 
 ### Lifecycle Diagram
 
@@ -89,22 +90,18 @@ The logical lifecycle maps to the contract statuses as follows:
 [Funding / Active]
        |
        v
-[Funded] <-----------------------+
-   |                             |
-   |--[release_tranche]--> [InProduction]
-   |                             |
-   |--[report_harvest] ---> [Harvested]
-   |                             |
-   v                             |
-[Settled]                       |
-   |                             |
-   | (alternative paths)         |
-   |                             |
-   +--[open_dispute] --------> [Disputed]
-   |                             |
-   |<--[resolve_dispute] ---- [Resolved]
-   |                             |
-   +--[claim_refund] --------> [RefundClaimed]*
+[Funded] --[release_tranche (first call)]--> [InProduction]
+   |                                               |
+   |                                               |--[release_tranche (subsequent)]
+   |                                               v
+   +--------------[report_harvest]-------------> [Harvested]
+                                                   |
+                                                   v
+                                               [Settled]
+
+Alternative Paths:
+- [Active / Funding / Funded / InProduction] --[open_dispute]--> [Disputed] --[resolve_dispute]--> [Resolved] --[claim_refund]--> [RefundClaimed]*
+- [Active / Funding / Funded / InProduction] --[mark_failed]--> [Failed] --[claim_refund]--> [RefundClaimed]*
 ```
 
 \* `RefundClaimed` is a per-investor action, not a global campaign status transition.
@@ -138,26 +135,38 @@ Backend indexers should consume events from **both** contracts. The recommended 
 
 ### ProductionEscrowContract Events
 
+Events are listed in lifecycle order. Topics are the first argument to `env.events().publish()`; the payload is the second.
+
 | Event Symbol | Topics | Payload | When to Index |
 |--------------|--------|---------|---------------|
 | `CampaignCreated` | `("CampaignCreated", campaign_id)` | `(farmer, timestamp, target_amount)` | New campaign available for funding. |
-| `ContributionReceived` | `("ContributionReceived", campaign_id)` | `(investor, timestamp, amount)` | Update total funded amount and investor position. |
-| `CampaignFunded` | `("CampaignFunded", campaign_id)` | `(timestamp, total_funded)` | Campaign moves from `Active` to `Funded`. |
-| `TrancheReleased` | `("TrancheReleased", campaign_id)` | `(recipient, timestamp, amount)` | Escrow balance decreases; farmer received funds. |
-| `HarvestReported` | `("HarvestReported", campaign_id)` | `(farmer, timestamp)` | Harvest milestone reached. |
+| `ContribReceived` | `("ContribReceived", campaign_id)` | `(investor, timestamp, amount)` | Update total funded amount and investor position. |
+| `CampaignFunded` | `("CampaignFunded", campaign_id)` | `(timestamp, total_funded)` | Campaign moves to `Funded`; funding target reached. |
+| `TranchesConfigured` | `("TranchesConfigured", campaign_id)` | `(timestamp, tranche_count)` | Admin has set the tranche schedule for a funded campaign. |
+| `TrancheReleased` | `("TrancheReleased", campaign_id)` | `(recipient, timestamp, amount)` | Escrow balance decreases; farmer received funds. First call transitions status to `InProduction`. |
+| `HarvestReported` | `("HarvestReported", campaign_id)` | `(farmer, outcome, timestamp)` | Harvest milestone reached; `outcome` is the reported harvest symbol. |
+| `CampaignFailed` | `("CampaignFailed", campaign_id)` | `(timestamp, refundable)` | Campaign marked `Failed`; `refundable` is the total amount available for investor refunds. |
 | `DisputeOpened` | `("DisputeOpened", campaign_id)` | `(opener, reason, timestamp, ledger_sequence)` | Campaign status locked to `Disputed`. |
 | `DisputeResolved` | `("DisputeResolved", campaign_id)` | `(admin, resolution, payout_to_farmer, refundable_to_investors, timestamp, ledger_sequence)` | Campaign status moves to `Resolved`. |
-| `RefundClaimed` | `("RefundClaimed", campaign_id)` | `(investor, timestamp, amount)` | Individual investor refunded; zero out contribution. |
-| `CampaignSettled` | `("CampaignSettled", campaign_id)` | `(farmer, timestamp, final_amount)` | Campaign moves to `Settled`; final payout recorded. |
+| `RefundClaimed` | `("RefundClaimed", campaign_id)` | `(investor, timestamp, amount)` | Individual investor refunded from a `Failed` or `Resolved` campaign; zero out their contribution. |
+| `ReturnClaimed` | `("ReturnClaimed", campaign_id)` | `(investor, timestamp, amount)` | Individual investor claimed their pro-rata share of returns from a `Settled` campaign. |
+| `CampaignSettled` | `("CampaignSettled", campaign_id)` | `(farmer, timestamp, farmer_payout, investor_returns)` | Campaign moves to `Settled`; `farmer_payout` is the amount released to the farmer, `investor_returns` is the pool available to investors. |
 
 ### RegistryContract Events
 
+The registry emits events from two layers: **direct calls** (e.g. `initialize`, `approve_contract`) and **activity indexing** (secondary events emitted inside `record_activity` for specific `ActivityAction` variants). Both layers are listed below.
+
 | Event Symbol | Topics | Payload | When to Index |
 |--------------|--------|---------|---------------|
-| `act_rec` | `("act_rec", campaign_id)` | `(actor, action_type, timestamp, ledger_sequence)` | New audit record appended. Useful for off-chain audit dashboards. |
-| `cont_appr` | `("cont_appr",)` | `contract` | A contract was approved to record activities. |
-| `cont_revo` | `("cont_revo",)` | `contract` | A contract approval was revoked. |
-| `admin_upd` | `("admin_upd",)` | `(old_admin, new_admin)` | Registry admin changed. |
+| `AdminInitialized` | `("AdminInitialized", admin)` | `(admin, timestamp, ledger_sequence)` | Registry deployed and admin set for the first time. |
+| `AdminUpdated` | `("AdminUpdated", new_admin)` | `(actor, old_admin, new_admin, timestamp, ledger_sequence)` | Registry admin address changed. |
+| `ContractApproved` | `("ContractApproved", contract)` | `(actor, contract, timestamp, ledger_sequence)` | A contract address was added to the approved-contract allowlist. |
+| `ContractRevoked` | `("ContractRevoked", contract)` | `(actor, contract, timestamp, ledger_sequence)` | A contract address was removed from the approved-contract allowlist. |
+| `FarmerRegistered` | `("FarmerRegistered", farmer)` | `(farmer, name, timestamp, ledger_sequence)` | A farmer profile was registered directly via `register_farmer`. Also emitted inside `record_activity` when `action_type = FarmerRegistered`. |
+| `CampaignRegistered` | `("CampaignRegistered", campaign_id)` | `(farmer, title, timestamp, ledger_sequence)` | A campaign was registered via `register_campaign`. Also emitted inside `record_activity` when `action_type` is `CampaignCreated` or `CampaignRegistered`. |
+| `CampaignEscrowLinked` | `("CampaignEscrowLinked", campaign_id)` | `(farmer, escrow_contract, timestamp, ledger_sequence)` | A campaign was linked to its `ProductionEscrowContract` instance via `link_campaign_escrow`. |
+| `CampaignStatusUpdated` | `("CampaignStatusUpdated", campaign_id)` | `(prev_status, new_status, timestamp, ledger_sequence)` | Campaign lifecycle status updated via `update_campaign_status`. Also emitted inside `record_activity` when `action_type = CampaignStatusChanged`. |
+| `ActivityRecorded` | `("ActivityRecorded", campaign_id)` | `(actor, action_type, timestamp, ledger_sequence)` | Every call to `record_activity` emits this event. Use it as the primary audit feed. |
 
 ## Example Transaction Flows
 
@@ -179,7 +188,7 @@ Farmer
   |         )
   |
   |        [Registry appends ActivityRecord]
-  |        [Registry emits act_rec event]
+  |        [Registry emits ActivityRecorded event]
 ```
 
 ### 2. Funding
@@ -192,7 +201,7 @@ Investor 1
   |          )
   |          [Investor authorizes token transfer into escrow]
   |          [Escrow updates total_funded & contribution]
-  |          [Escrow emits ContributionReceived]
+  |          [Escrow emits ContribReceived]
 
 Investor 2
   |
@@ -202,7 +211,7 @@ Investor 2
   |          [Investor authorizes token transfer into escrow]
   |          [Escrow updates total_funded & contribution]
   |          [Escrow reaches target and sets status = Funded]
-  |          [Escrow emits ContributionReceived]
+  |          [Escrow emits ContribReceived]
   |          [Escrow emits CampaignFunded]
 
 Backend / Indexer

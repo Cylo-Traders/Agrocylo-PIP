@@ -94,6 +94,18 @@ export function useTranches(campaignId: string | undefined) {
   });
 }
 
+export function useEscrowAdmin() {
+  return useQuery({
+    queryKey: contractQueryKeys.escrowAdmin(),
+    enabled: isEscrowConfigured(),
+    queryFn: async (): Promise<string> => {
+      const client = await getEscrowClient();
+      const tx = await contractMethod<string>(client, 'get_admin')({});
+      return tx.result;
+    },
+  });
+}
+
 export function useHarvestRecord(
   campaignId: string | undefined,
   options: { enabled?: boolean } = {},

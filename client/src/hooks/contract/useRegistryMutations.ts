@@ -5,6 +5,7 @@ import {
   invokeContractWrite,
 } from '../../lib/soroban/contractClient';
 import { contractQueryKeys } from './queryKeys';
+import { useMutationToasts } from './mutationToasts';
 
 export interface RegisterCampaignInput {
   campaignId: bigint;
@@ -17,6 +18,10 @@ export interface RegisterCampaignInput {
 export function useRegisterCampaign() {
   const wallet = useWallet();
   const queryClient = useQueryClient();
+  const { notifySuccess, notifyError } = useMutationToasts({
+    success: 'Campaign registered',
+    error: 'Could not register campaign',
+  });
 
   return useMutation({
     mutationFn: async (input: RegisterCampaignInput) => {
@@ -33,9 +38,11 @@ export function useRegisterCampaign() {
       );
     },
     onSuccess: (_data, input) => {
+      notifySuccess(`Campaign #${input.campaignId.toString()} registered.`);
       queryClient.invalidateQueries({
         queryKey: contractQueryKeys.activity(input.campaignId.toString()),
       });
     },
+    onError: notifyError,
   });
 }

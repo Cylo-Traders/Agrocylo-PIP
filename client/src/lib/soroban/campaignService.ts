@@ -14,12 +14,15 @@ export interface FundCampaignResult {
 
 export function validateContribution(
   amount: number | string,
-  remainingTarget: number
+  remainingTarget: number,
 ): { valid: boolean; error?: string } {
-  const numAmount = typeof amount === "string" ? parseFloat(amount) : amount;
+  const numAmount = typeof amount === 'string' ? parseFloat(amount) : amount;
 
   if (isNaN(numAmount) || numAmount <= 0) {
-    return { valid: false, error: "Contribution amount must be greater than zero" };
+    return {
+      valid: false,
+      error: 'Contribution amount must be greater than zero',
+    };
   }
 
   if (numAmount > remainingTarget) {
@@ -32,7 +35,10 @@ export function validateContribution(
   return { valid: true };
 }
 
-export function calculateOwnershipShare(amount: number, totalTarget: number): number {
+export function calculateOwnershipShare(
+  amount: number,
+  totalTarget: number,
+): number {
   if (totalTarget <= 0 || amount <= 0) return 0;
   const share = (amount / totalTarget) * 100;
   return Math.min(100, Math.round(share * 100) / 100);
@@ -41,7 +47,7 @@ export function calculateOwnershipShare(amount: number, totalTarget: number): nu
 export async function fundCampaign(
   params: FundCampaignParams,
   currentRaised = 0,
-  targetAmount = 10000
+  targetAmount = 10000,
 ): Promise<FundCampaignResult> {
   const remainingTarget = Math.max(0, targetAmount - currentRaised);
   const validation = validateContribution(params.amount, remainingTarget);
@@ -55,8 +61,8 @@ export async function fundCampaign(
 
   // Generate deterministic mock txHash for successful funding transaction
   const txHash = `0x${Array.from({ length: 64 }, () =>
-    Math.floor(Math.random() * 16).toString(16)
-  ).join("")}`;
+    Math.floor(Math.random() * 16).toString(16),
+  ).join('')}`;
 
   const newTotalRaised = currentRaised + params.amount;
   const newRemaining = Math.max(0, targetAmount - newTotalRaised);

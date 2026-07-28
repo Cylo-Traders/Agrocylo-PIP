@@ -8,6 +8,7 @@ export type CampaignStatus =
   | 'Active'
   | 'Funding'
   | 'Funded'
+  | 'InProduction'
   | 'Harvested'
   | 'Disputed'
   | 'Resolved'

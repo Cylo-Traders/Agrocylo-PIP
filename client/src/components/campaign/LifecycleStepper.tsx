@@ -23,7 +23,7 @@ export function LifecycleStepper({ status }: { status: CampaignStatusTag }) {
             ? 'border-leaf-700 bg-leaf-700 text-white'
             : isCurrent
               ? 'border-leaf-700 bg-white text-leaf-700'
-              : 'border-soil-300 bg-white text-soil-400';
+              : 'border-soil-300 bg-white text-soil-600';
 
           return (
             <li
@@ -49,7 +49,7 @@ export function LifecycleStepper({ status }: { status: CampaignStatusTag }) {
                   )}
                 </span>
                 <span
-                  className={`text-caption font-medium ${isCurrent ? 'text-leaf-700' : isPassed ? 'text-soil-700' : 'text-soil-400'}`}
+                  className={`text-caption font-medium ${isCurrent ? 'text-leaf-700' : isPassed ? 'text-soil-700' : 'text-soil-600'}`}
                 >
                   {step.label}
                 </span>
@@ -66,7 +66,7 @@ export function LifecycleStepper({ status }: { status: CampaignStatusTag }) {
       </ol>
 
       {derailed && (
-        <p className="mt-3 text-body-sm text-soil-500">
+        <p className="mt-3 text-body-sm text-soil-600">
           This campaign left the standard funding path —{' '}
           <span className="font-semibold">{status}</span>. See the dispute
           section below for details.

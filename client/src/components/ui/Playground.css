@@ -2,7 +2,16 @@
   max-width: 1200px;
   margin: 0 auto;
   padding: 2.5rem 1.5rem;
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  font-family:
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    Roboto,
+    Oxygen,
+    Ubuntu,
+    Cantarell,
+    sans-serif;
   color: hsl(220, 15%, 15%);
   background-color: hsl(220, 15%, 98%);
   min-height: 100vh;

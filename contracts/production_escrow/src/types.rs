@@ -6,6 +6,7 @@ pub enum CampaignStatus {
     Active,
     Funding,
     Funded,
+    InProduction,
     Harvested,
     Disputed,
     Resolved,

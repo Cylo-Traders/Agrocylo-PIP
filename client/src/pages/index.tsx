@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 
 export { CampaignDetailPage } from './CampaignDetailPage';
 export { CreateCampaignPage } from './CreateCampaignPage';
+export { AdminDashboardPage } from './AdminDashboardPage';
 
 type PlaceholderPageProps = {
   eyebrow: string;
@@ -78,16 +79,6 @@ export function InvestorDashboardPage() {
       eyebrow="Dashboard"
       title="Investor dashboard"
       description="Monitor your agricultural investments, campaign progress, and returns."
-    />
-  );
-}
-
-export function AdminDashboardPage() {
-  return (
-    <PlaceholderPage
-      eyebrow="Dashboard"
-      title="Admin dashboard"
-      description="Review platform activity, campaign verification, disputes, and system health."
     />
   );
 }

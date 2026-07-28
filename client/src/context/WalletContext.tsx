@@ -10,6 +10,7 @@ import type { ReactNode } from 'react';
 import {
   isConnected,
   getAddress,
+  getNetworkDetails,
   signTransaction as freighterSign,
 } from '@stellar/freighter-api';
 import { NETWORK_PASSPHRASE } from '../lib/soroban/config';
@@ -48,6 +49,30 @@ function truncateAddress(addr: string): string {
 
 export { truncateAddress };
 
+/**
+ * Compares the connected wallet's active network against the app's
+ * configured NETWORK_PASSPHRASE. Returns a human-readable warning if they
+ * differ, or null if they match (or if the check itself fails — Freighter's
+ * own signature request is the final guard in that case).
+ */
+async function describeNetworkMismatch(): Promise<string | null> {
+  try {
+    const details = await getNetworkDetails();
+    if (
+      details.networkPassphrase &&
+      details.networkPassphrase !== NETWORK_PASSPHRASE
+    ) {
+      return `Your wallet is connected to "${details.network}" but this app is configured for a different network. Switch your wallet's network to continue.`;
+    }
+    return null;
+  } catch {
+    // If Freighter doesn't support the check (older versions) or it fails,
+    // don't block the user here — an actual mismatch will still be caught
+    // when Freighter is asked to sign against NETWORK_PASSPHRASE.
+    return null;
+  }
+}
+
 export function WalletProvider({ children }: { children: ReactNode }) {
   const [publicKey, setPublicKey] = useState<string | null>(() => {
     try {
@@ -76,6 +101,10 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         localStorage.setItem(STORAGE_KEY, addrResult.address);
       } catch {
         // localStorage may be unavailable (SSR, private browsing, etc.)
+      }
+      const mismatchWarning = await describeNetworkMismatch();
+      if (mismatchWarning) {
+        setError(mismatchWarning);
       }
     } catch (err: unknown) {
       if (err instanceof Error && err.message.includes('reject')) {
@@ -109,7 +138,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         throw new Error('Wallet not connected');
       }
       const result = await freighterSign(xdr, {
-        ...walletSignOptions(),
+        networkPassphrase: NETWORK_PASSPHRASE,
       });
       return result.signedTxXdr;
     },

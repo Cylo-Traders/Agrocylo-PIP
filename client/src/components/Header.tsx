@@ -12,10 +12,10 @@ export default function Header() {
   } = useWallet();
 
   return (
-    <nav className="relative flex items-center justify-between rounded-campaign border border-soil-200 bg-white px-6 py-3 shadow-campaign">
+    <nav className="relative flex flex-wrap items-center justify-between gap-3 rounded-campaign border border-soil-200 bg-white px-6 py-3 shadow-campaign">
       <div className="flex items-center gap-2">
         <span className="text-h4 font-bold text-soil-900">Agrocylo</span>
-        <span className="text-label text-soil-400">PIP</span>
+        <span className="text-label text-soil-600">PIP</span>
       </div>
 
       <div className="flex items-center gap-3">
@@ -45,7 +45,10 @@ export default function Header() {
       </div>
 
       {error && (
-        <div className="absolute right-6 top-full z-50 mt-2 max-w-sm rounded-lg border border-status-disputed/20 bg-status-disputed-light p-3 text-body-sm text-status-disputed-dark shadow-lg">
+        <div
+          role="alert"
+          className="absolute inset-x-4 top-full z-50 mt-2 w-auto max-w-sm rounded-lg border border-status-disputed/20 bg-status-disputed-light p-3 text-body-sm text-status-disputed-dark shadow-lg sm:inset-x-auto sm:right-6"
+        >
           {error}
           <button
             type="button"

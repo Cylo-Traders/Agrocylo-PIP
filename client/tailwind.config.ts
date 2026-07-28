@@ -76,6 +76,11 @@ export default {
             light: '#e0e7ff',
             dark: '#3730a3',
           },
+          inproduction: {
+            DEFAULT: '#0d9488',
+            light: '#ccfbf1',
+            dark: '#115e59',
+          },
           harvested: {
             DEFAULT: '#f5bd2a',
             light: '#fef8d0',

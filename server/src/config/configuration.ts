@@ -19,9 +19,15 @@ export interface SorobanConfig {
   escrowContractId: string;
   eventPollIntervalMs: number;
   eventRetentionDays: number;
+  /** Ledger to start indexing from when no persisted cursor exists yet. */
+  indexerStartLedger?: number;
 }
 
-export default (): { app: AppConfig; db: DbConfig; soroban: SorobanConfig } => ({
+export default (): {
+  app: AppConfig;
+  db: DbConfig;
+  soroban: SorobanConfig;
+} => ({
   app: {
     nodeEnv: process.env.NODE_ENV ?? 'development',
     port: parseInt(process.env.PORT ?? '3000', 10),
@@ -43,5 +49,8 @@ export default (): { app: AppConfig; db: DbConfig; soroban: SorobanConfig } => (
       10,
     ),
     eventRetentionDays: parseInt(process.env.EVENT_RETENTION_DAYS ?? '7', 10),
+    indexerStartLedger: process.env.SOROBAN_INDEXER_START_LEDGER
+      ? parseInt(process.env.SOROBAN_INDEXER_START_LEDGER, 10)
+      : undefined,
   },
 });

@@ -13,7 +13,7 @@ export function ComingSoonCard({ title, description }: ComingSoonCardProps) {
           Coming soon
         </span>
       </div>
-      <p className="mt-2 text-body-sm text-soil-500">{description}</p>
+      <p className="mt-2 text-body-sm text-soil-600">{description}</p>
     </div>
   );
 }

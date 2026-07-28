@@ -5,7 +5,7 @@ import { StrKey } from '@stellar/stellar-sdk';
 import Header from '../components/Header';
 import { useWallet } from '../context/WalletContext';
 import { useCreateCampaign, useRegisterCampaign } from '../hooks/contract';
-import { describeContractError } from '../lib/soroban/contractClient';
+import { toUserFacingError } from '../lib/soroban/userFacingError';
 import {
   CONTRACT_SYMBOL_HINT,
   isValidContractSymbol,
@@ -23,9 +23,9 @@ const secondaryButtonClass =
   'inline-flex items-center justify-center rounded-lg border border-soil-300 px-5 py-2.5 text-sm font-semibold text-soil-700 transition-colors hover:bg-soil-50 disabled:cursor-not-allowed disabled:opacity-50';
 const inputClass =
   'w-full rounded-lg border border-soil-300 px-3 py-2 text-body-sm text-soil-900 focus:border-leaf-500 focus:outline-none focus:ring-1 focus:ring-leaf-500';
-const labelClass = 'mb-1 block text-label text-soil-500';
+const labelClass = 'mb-1 block text-label text-soil-600';
 const errorClass = 'mt-1 text-caption text-status-failed-dark';
-const hintClass = 'mt-1 text-caption text-soil-400';
+const hintClass = 'mt-1 text-caption text-soil-600';
 
 const STEPS = ['Campaign details', 'Funding', 'Deadline', 'Review'];
 
@@ -156,7 +156,7 @@ export function CreateCampaignPage() {
 
       navigate(`/campaigns/${id.toString()}`);
     } catch (err) {
-      setFlowError(describeContractError(err));
+      setFlowError(toUserFacingError(err));
     }
   }
 
@@ -166,7 +166,7 @@ export function CreateCampaignPage() {
         <Header />
         <div className={`${cardClass} mt-8`}>
           <h1 className="text-h3 text-soil-950">Soroban RPC not configured</h1>
-          <p className="mt-2 text-body-sm text-soil-500">
+          <p className="mt-2 text-body-sm text-soil-600">
             Set <code className="font-mono">VITE_SOROBAN_RPC_URL</code>,{' '}
             <code className="font-mono">
               VITE_PRODUCTION_ESCROW_CONTRACT_ID
@@ -186,7 +186,7 @@ export function CreateCampaignPage() {
       <div className="mb-8 mt-6">
         <p className="text-label text-leaf-700">For farmers</p>
         <h1 className="mt-1 text-soil-950">Create a campaign</h1>
-        <p className="mt-2 text-body-sm text-soil-500">
+        <p className="mt-2 text-body-sm text-soil-600">
           Tell investors about your farm, funding goal, timeline, and expected
           harvest.
         </p>
@@ -218,14 +218,22 @@ export function CreateCampaignPage() {
                       ? 'bg-leaf-700 text-white'
                       : index < step
                         ? 'bg-leaf-100 text-leaf-700'
-                        : 'bg-soil-100 text-soil-400'
+                        : 'bg-soil-100 text-soil-600'
                   }`}
                   aria-current={index === step ? 'step' : undefined}
+                  aria-label={`Step ${index + 1} of ${STEPS.length}: ${label}${
+                    index === step
+                      ? ' (current)'
+                      : index < step
+                        ? ' (completed)'
+                        : ''
+                  }`}
                 >
                   {index + 1}
                 </span>
                 <span
-                  className={`hidden text-caption sm:inline ${index === step ? 'font-semibold text-soil-900' : 'text-soil-400'}`}
+                  aria-hidden="true"
+                  className={`hidden text-caption sm:inline ${index === step ? 'font-semibold text-soil-900' : 'text-soil-600'}`}
                 >
                   {label}
                 </span>
@@ -251,9 +259,15 @@ export function CreateCampaignPage() {
                   value={form.title}
                   onChange={(e) => update('title', e.target.value)}
                   placeholder="Highland maize expansion"
+                  aria-invalid={touched && !!errors.title}
+                  aria-describedby={
+                    touched && errors.title ? 'title-error' : undefined
+                  }
                 />
                 {touched && errors.title && (
-                  <p className={errorClass}>{errors.title}</p>
+                  <p id="title-error" role="alert" className={errorClass}>
+                    {errors.title}
+                  </p>
                 )}
               </div>
               <div>
@@ -267,9 +281,17 @@ export function CreateCampaignPage() {
                   value={form.description}
                   onChange={(e) => update('description', e.target.value)}
                   placeholder="What you're growing, where, and how the funds will be used."
+                  aria-invalid={touched && !!errors.description}
+                  aria-describedby={
+                    touched && errors.description
+                      ? 'description-error'
+                      : undefined
+                  }
                 />
                 {touched && errors.description && (
-                  <p className={errorClass}>{errors.description}</p>
+                  <p id="description-error" role="alert" className={errorClass}>
+                    {errors.description}
+                  </p>
                 )}
               </div>
               <div>
@@ -282,8 +304,14 @@ export function CreateCampaignPage() {
                   value={form.harvestMetadata}
                   onChange={(e) => update('harvestMetadata', e.target.value)}
                   placeholder="maize_2026"
+                  aria-invalid={touched && !!errors.harvestMetadata}
+                  aria-describedby="harvestMetadata-hint"
                 />
-                <p className={hintClass}>
+                <p
+                  id="harvestMetadata-hint"
+                  role={touched && errors.harvestMetadata ? 'alert' : undefined}
+                  className={hintClass}
+                >
                   {touched && errors.harvestMetadata
                     ? errors.harvestMetadata
                     : `Short on-chain crop/season tag. ${CONTRACT_SYMBOL_HINT}`}
@@ -310,9 +338,21 @@ export function CreateCampaignPage() {
                   value={form.targetAmount}
                   onChange={(e) => update('targetAmount', e.target.value)}
                   placeholder="50000"
+                  aria-invalid={touched && !!errors.targetAmount}
+                  aria-describedby={
+                    touched && errors.targetAmount
+                      ? 'targetAmount-error'
+                      : undefined
+                  }
                 />
                 {touched && errors.targetAmount && (
-                  <p className={errorClass}>{errors.targetAmount}</p>
+                  <p
+                    id="targetAmount-error"
+                    role="alert"
+                    className={errorClass}
+                  >
+                    {errors.targetAmount}
+                  </p>
                 )}
               </div>
               <div>
@@ -325,9 +365,21 @@ export function CreateCampaignPage() {
                   value={form.tokenAddress}
                   onChange={(e) => update('tokenAddress', e.target.value)}
                   placeholder="C..."
+                  aria-invalid={touched && !!errors.tokenAddress}
+                  aria-describedby={
+                    touched && errors.tokenAddress
+                      ? 'tokenAddress-error'
+                      : undefined
+                  }
                 />
                 {touched && errors.tokenAddress && (
-                  <p className={errorClass}>{errors.tokenAddress}</p>
+                  <p
+                    id="tokenAddress-error"
+                    role="alert"
+                    className={errorClass}
+                  >
+                    {errors.tokenAddress}
+                  </p>
                 )}
               </div>
               <div className="flex justify-between pt-2">
@@ -357,9 +409,15 @@ export function CreateCampaignPage() {
                   className={inputClass}
                   value={form.deadline}
                   onChange={(e) => update('deadline', e.target.value)}
+                  aria-invalid={touched && !!errors.deadline}
+                  aria-describedby={
+                    touched && errors.deadline ? 'deadline-error' : undefined
+                  }
                 />
                 {touched && errors.deadline && (
-                  <p className={errorClass}>{errors.deadline}</p>
+                  <p id="deadline-error" role="alert" className={errorClass}>
+                    {errors.deadline}
+                  </p>
                 )}
               </div>
               <div className="flex justify-between pt-2">
@@ -381,37 +439,37 @@ export function CreateCampaignPage() {
             <div className="space-y-4">
               <dl className="divide-y divide-soil-100 border-t border-soil-100 text-body-sm">
                 <div className="flex justify-between gap-4 py-2">
-                  <dt className="text-soil-500">Title</dt>
+                  <dt className="text-soil-600">Title</dt>
                   <dd className="text-right font-medium text-soil-900">
                     {form.title}
                   </dd>
                 </div>
                 <div className="flex justify-between gap-4 py-2">
-                  <dt className="text-soil-500">Description</dt>
+                  <dt className="text-soil-600">Description</dt>
                   <dd className="max-w-xs text-right text-soil-700">
                     {form.description}
                   </dd>
                 </div>
                 <div className="flex justify-between gap-4 py-2">
-                  <dt className="text-soil-500">Harvest tag</dt>
+                  <dt className="text-soil-600">Harvest tag</dt>
                   <dd className="font-medium text-soil-900">
                     {form.harvestMetadata}
                   </dd>
                 </div>
                 <div className="flex justify-between gap-4 py-2">
-                  <dt className="text-soil-500">Target</dt>
+                  <dt className="text-soil-600">Target</dt>
                   <dd className="font-medium text-soil-900">
                     {form.targetAmount}
                   </dd>
                 </div>
                 <div className="flex justify-between gap-4 py-2">
-                  <dt className="text-soil-500">Token</dt>
+                  <dt className="text-soil-600">Token</dt>
                   <dd className="max-w-xs truncate text-right font-mono text-soil-700">
                     {form.tokenAddress}
                   </dd>
                 </div>
                 <div className="flex justify-between gap-4 py-2">
-                  <dt className="text-soil-500">Deadline</dt>
+                  <dt className="text-soil-600">Deadline</dt>
                   <dd className="font-medium text-soil-900">
                     {new Date(form.deadline).toLocaleString()}
                   </dd>
@@ -419,14 +477,20 @@ export function CreateCampaignPage() {
               </dl>
 
               {campaignCreated && (
-                <p className="rounded-lg bg-status-active-light px-3 py-2 text-body-sm text-status-active-dark">
+                <p
+                  role="status"
+                  className="rounded-lg bg-status-active-light px-3 py-2 text-body-sm text-status-active-dark"
+                >
                   Campaign #{campaignId!.toString()} was created on-chain.
                   Retrying will only complete registry registration.
                 </p>
               )}
 
               {flowError && (
-                <p className="text-body-sm text-status-failed-dark">
+                <p
+                  role="alert"
+                  className="text-body-sm text-status-failed-dark"
+                >
                   {flowError}
                 </p>
               )}
