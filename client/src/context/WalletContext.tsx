@@ -28,6 +28,10 @@ interface WalletState {
   signTransaction: (xdr: string) => Promise<string>;
 }
 
+export function walletSignOptions() {
+  return { networkPassphrase: NETWORK_PASSPHRASE };
+}
+
 const WalletContext = createContext<WalletState | null>(null);
 
 export function useWallet(): WalletState {
