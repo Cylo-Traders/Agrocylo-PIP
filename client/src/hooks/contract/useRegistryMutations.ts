@@ -14,6 +14,53 @@ export interface RegisterCampaignInput {
   description: string;
 }
 
+export interface RegisterFarmerInput {
+  name: string;
+  location: string;
+}
+
+/** Registers farmer metadata (name/location) with the RegistryContract. */
+export function useRegisterFarmer() {
+  const wallet = useWallet();
+  const queryClient = useQueryClient();
+  const { notifySuccess, notifyError } = useMutationToasts({
+    success: 'Farmer registered',
+    error: 'Could not register farmer',
+  });
+
+  return useMutation({
+    mutationFn: async (input: RegisterFarmerInput) => {
+      if (!wallet.publicKey) {
+        throw new Error('Wallet not connected');
+      }
+      return invokeContractWrite(
+        getRegistryClient(),
+        'register_farmer',
+        {
+          farmer: wallet.publicKey,
+          name: input.name,
+          location: input.location,
+        },
+        wallet,
+      );
+    },
+    onSuccess: (_data, _input) => {
+      notifySuccess();
+      queryClient.invalidateQueries({
+        queryKey: contractQueryKeys.farmer(wallet.publicKey ?? ''),
+      });
+    },
+    onError: notifyError,
+  });
+}
+
+export interface RegisterCampaignInput {
+  campaignId: bigint;
+  farmer: string;
+  title: string;
+  description: string;
+}
+
 /** Registers campaign metadata (title/description) with the RegistryContract. */
 export function useRegisterCampaign() {
   const wallet = useWallet();
