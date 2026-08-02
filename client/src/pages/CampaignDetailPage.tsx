@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import { FundCampaignModal } from '../components/campaign/FundCampaignModal';
 import { StatusBadge } from '../components/campaign/StatusBadge';
+import { OpenDisputeForm } from '../components/campaign/OpenDisputeForm';
 import { ActivityFeed } from '../components/campaign/ActivityFeed';
 import { useCampaignLiveUpdates } from '../hooks/useCampaignLiveUpdates';
 import { DetailPageSkeleton } from '../components/ui/Skeleton/Skeleton';
+import type { CampaignStatusTag } from '../lib/soroban/types';
 
 export interface CampaignData {
   id: string;
@@ -11,7 +13,8 @@ export interface CampaignData {
   description: string;
   totalTarget: number;
   currentRaised: number;
-  status: 'Active' | 'Funding' | 'Resolved' | 'Failed' | 'Settled';
+  status: CampaignStatusTag;
+  farmer: string;
 }
 
 export const CampaignDetailPage: React.FC = () => {
@@ -27,7 +30,8 @@ export const CampaignDetailPage: React.FC = () => {
           'Scaling sustainable maize production across 250 hectares with automated precision drip irrigation and AI-powered yield monitoring.',
         totalTarget: 50000,
         currentRaised: 32500,
-        status: 'Funding',
+        status: 'Funding' as CampaignStatusTag,
+        farmer: 'GBMIR4JZQ6N3XK3Y5F6Y6Z7X8Y9Z0X1Y2Z3X4Y5Z6X7Y8Z9X0Y1Z2X3Y4Z',
       });
     }, 0);
     return () => window.clearTimeout(timer);
@@ -119,6 +123,12 @@ export const CampaignDetailPage: React.FC = () => {
           </button>
         </div>
       </div>
+
+      <OpenDisputeForm
+        campaignId={campaign.id}
+        campaignStatus={campaign.status}
+        farmerAddress={campaign.farmer}
+      />
 
       <FundCampaignModal
         isOpen={isModalOpen}
