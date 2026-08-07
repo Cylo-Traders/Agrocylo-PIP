@@ -1,5 +1,21 @@
 # Soroban Contract Setup Guide
 
+## Supported Rust toolchain
+
+This workspace is an **application-style** Soroban deployable package, not a
+library published to crates.io. A committed `Cargo.lock` pins the full
+dependency graph for reproducible local and CI builds.
+
+| Item | Value |
+| --- | --- |
+| Recommended toolchain | Rust **stable** (CI uses `dtolnay/rust-toolchain@stable`) |
+| WASM target | `wasm32-unknown-unknown` |
+| Lockfile | `contracts/Cargo.lock` (**committed** — always build with `--locked`) |
+
+If `cargo build --locked` fails after a dependency edit, refresh the lockfile
+from this directory with `cargo update` / `cargo generate-lockfile` and commit
+the resulting `Cargo.lock` change in the same PR.
+
 ## Prerequisites
 
 ### Install Rust
@@ -30,10 +46,11 @@ cargo install --locked soroban-cli
 
 ## Building the Contracts
 
-From the `contracts` directory:
+From the `contracts` directory, **always pass `--locked`** so Cargo uses the
+committed lockfile instead of re-resolving against crates.io:
 
 ```bash
-cargo build --target wasm32-unknown-unknown --release
+cargo build --locked --target wasm32-unknown-unknown --release
 ```
 
 Optimized builds will be located in:
@@ -44,19 +61,19 @@ target/wasm32-unknown-unknown/release/*.wasm
 ## Running Tests
 
 ```bash
-cargo test
+cargo test --locked
 ```
 
 Run tests with output:
 
 ```bash
-cargo test -- --nocapture
+cargo test --locked -- --nocapture
 ```
 
 Run specific test:
 
 ```bash
-cargo test test_initialize_admin
+cargo test --locked test_initialize_admin
 ```
 
 ## Contract Functions
