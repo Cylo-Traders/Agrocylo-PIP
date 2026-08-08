@@ -1,12 +1,14 @@
 #![no_std]
 
 pub mod events;
+mod registry_sync;
 mod storage;
 mod types;
 
 pub use types::*;
 
 use events::*;
+use registry::ActivityAction;
 use soroban_sdk::{
     contract, contractimpl,
     token::Client as TokenClient,
@@ -65,6 +67,20 @@ impl ProductionEscrowContract {
         storage::get_admin(&env)
     }
 
+    /// Admin sets (or replaces) the optional RegistryContract address used for
+    /// on-chain activity logging and status mirroring. When unset, registry
+    /// sync is a no-op (backward compatible).
+    pub fn set_registry(env: Env, registry: Address) {
+        require_admin(&env);
+        storage::set_registry(&env, &registry);
+        storage::extend_instance_ttl(&env);
+    }
+
+    /// Returns the configured RegistryContract address, if any.
+    pub fn get_registry(env: Env) -> Option<Address> {
+        storage::get_registry(&env)
+    }
+
     pub fn create_campaign(
         env: Env,
         campaign_id: u64,
@@ -97,7 +113,7 @@ impl ProductionEscrowContract {
             target_amount,
             token_address,
             deadline,
-            harvest_metadata,
+            harvest_metadata: harvest_metadata.clone(),
             total_funded: 0,
             released: 0,
             refundable: 0,
@@ -107,7 +123,8 @@ impl ProductionEscrowContract {
         storage::set_campaign(&env, campaign_id, &campaign);
         storage::extend_instance_ttl(&env);
 
-        emit_campaign_created(&env, campaign_id, farmer, target_amount);
+        emit_campaign_created(&env, campaign_id, farmer.clone(), target_amount);
+        registry_sync::on_campaign_created(&env, campaign_id, &farmer, &harvest_metadata);
     }
 
     /// Investor funds a campaign. Requires investor authorization, transfers
@@ -154,7 +171,8 @@ impl ProductionEscrowContract {
         storage::set_contribution(&env, campaign_id, &investor, contributed);
         storage::extend_instance_ttl(&env);
 
-        emit_contribution_received(&env, campaign_id, investor, amount);
+        emit_contribution_received(&env, campaign_id, investor.clone(), amount);
+        registry_sync::on_contribution(&env, campaign_id, &investor, &campaign.status);
     }
 
     /// Admin-only reconciliation path for contributions verified off-chain
@@ -211,7 +229,9 @@ impl ProductionEscrowContract {
         storage::set_contribution(&env, campaign_id, &investor, contributed);
         storage::extend_instance_ttl(&env);
 
-        emit_reconciled_contribution(&env, campaign_id, investor, amount);
+        emit_reconciled_contribution(&env, campaign_id, investor.clone(), amount);
+        // Reconciled path: use investor as activity actor (admin+farmer already authed).
+        registry_sync::on_contribution(&env, campaign_id, &investor, &campaign.status);
     }
 
     pub fn complete_funding(env: Env, campaign_id: u64, total_funded: i128) {
@@ -235,6 +255,14 @@ impl ProductionEscrowContract {
         storage::extend_instance_ttl(&env);
 
         emit_campaign_funded(&env, campaign_id, total_funded);
+        let admin = storage::get_admin(&env);
+        registry_sync::on_status_transition(
+            &env,
+            campaign_id,
+            &admin,
+            ActivityAction::CampaignFunded,
+            &CampaignStatus::Funded,
+        );
     }
 
     /// Admin configures ordered tranches for a funded campaign.
@@ -319,6 +347,7 @@ impl ProductionEscrowContract {
         storage::extend_instance_ttl(&env);
 
         emit_tranche_released(&env, campaign_id, recipient, amount);
+        registry_sync::on_funds_released(&env, campaign_id, &campaign.status);
     }
 
     /// Farmer reports the harvest outcome, moving the campaign to Harvested.
@@ -348,7 +377,14 @@ impl ProductionEscrowContract {
         storage::set_campaign(&env, campaign_id, &campaign);
         storage::extend_instance_ttl(&env);
 
-        emit_harvest_reported(&env, campaign_id, farmer, outcome);
+        emit_harvest_reported(&env, campaign_id, farmer.clone(), outcome);
+        registry_sync::on_status_transition(
+            &env,
+            campaign_id,
+            &farmer,
+            ActivityAction::HarvestReported,
+            &CampaignStatus::Harvested,
+        );
     }
 
     pub fn open_dispute(env: Env, campaign_id: u64, opener: Address, reason: Symbol) {
@@ -386,7 +422,14 @@ impl ProductionEscrowContract {
         storage::set_campaign(&env, campaign_id, &campaign);
         storage::extend_instance_ttl(&env);
 
-        emit_dispute_opened(&env, campaign_id, opener, reason);
+        emit_dispute_opened(&env, campaign_id, opener.clone(), reason);
+        registry_sync::on_status_transition(
+            &env,
+            campaign_id,
+            &opener,
+            ActivityAction::DisputeInitiated,
+            &CampaignStatus::Disputed,
+        );
     }
 
     pub fn resolve_dispute(
@@ -448,10 +491,17 @@ impl ProductionEscrowContract {
         emit_dispute_resolved(
             &env,
             campaign_id,
-            admin,
+            admin.clone(),
             resolution,
             payout_to_farmer,
             refundable_to_investors,
+        );
+        registry_sync::on_status_transition(
+            &env,
+            campaign_id,
+            &admin,
+            ActivityAction::DisputeResolved,
+            &CampaignStatus::Resolved,
         );
     }
 
@@ -527,6 +577,14 @@ impl ProductionEscrowContract {
         storage::extend_instance_ttl(&env);
 
         emit_campaign_settled(&env, campaign_id, farmer, farmer_payout, investor_returns);
+        let admin = storage::get_admin(&env);
+        registry_sync::on_status_transition(
+            &env,
+            campaign_id,
+            &admin,
+            ActivityAction::CampaignSettled,
+            &CampaignStatus::Settled,
+        );
     }
 
     /// Admin marks a campaign as failed, making escrowed funds refundable to investors.
@@ -549,6 +607,14 @@ impl ProductionEscrowContract {
         storage::extend_instance_ttl(&env);
 
         emit_campaign_failed(&env, campaign_id, campaign.refundable);
+        let admin = storage::get_admin(&env);
+        registry_sync::on_status_transition(
+            &env,
+            campaign_id,
+            &admin,
+            ActivityAction::CampaignStatusChanged,
+            &CampaignStatus::Failed,
+        );
     }
 
     /// Investor claims their pro-rata share of investor returns from a Settled campaign.

@@ -264,7 +264,7 @@ proptest! {
         client.open_dispute(&1u64, &investor, &Symbol::new(&env, "quality"));
 
         let held: i128          = target as i128; // released=refundable=returnable=0
-        let payout_amount: i128 = (held * payout_frac_num / 100).max(1).min(held - 1);
+        let payout_amount: i128 = (held * (payout_frac_num as i128) / 100).max(1).min(held - 1);
         let expected_refundable = held - payout_amount;
 
         client.resolve_dispute(&1u64, &DisputeResolution::PartialSettlement, &payout_amount);

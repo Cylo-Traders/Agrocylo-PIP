@@ -8,10 +8,13 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 soroban-sdk = { workspace = true }
+# Cross-contract client + shared activity/status types for optional registry sync.
+registry = { path = "../registry" }
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
 proptest = "1.5"
+registry = { path = "../registry", features = ["testutils"] }
 
 [features]
-testutils = ["soroban-sdk/testutils"]
+testutils = ["soroban-sdk/testutils", "registry/testutils"]

@@ -110,6 +110,11 @@ impl RegistryContract {
         campaign::get_campaign_record(&env, campaign_id)
     }
 
+    /// True when a `CampaignRecord` was created via `link_campaign_escrow`.
+    pub fn has_campaign_record(env: Env, campaign_id: u64) -> bool {
+        campaign::has_campaign_record(&env, campaign_id)
+    }
+
     pub fn get_campaigns_by_farmer(env: Env, farmer: Address) -> Vec<u64> {
         campaign::get_campaigns_by_farmer(&env, &farmer)
     }

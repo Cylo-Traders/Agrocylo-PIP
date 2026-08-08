@@ -82,6 +82,8 @@ pub struct Tranche {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DataKey {
     Admin,
+    /// Optional RegistryContract address used for on-chain activity/status sync.
+    Registry,
     Campaign(u64),
     Dispute(u64),
     Contribution(u64, Address),
