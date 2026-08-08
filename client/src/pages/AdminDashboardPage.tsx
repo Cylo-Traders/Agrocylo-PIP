@@ -71,6 +71,60 @@ function AdminOverview({ campaigns }: { campaigns: AdminCampaignOverview[] }) {
   );
 }
 
+/** Queue of campaigns currently in Disputed status (open disputes). */
+function OpenDisputeQueue({
+  campaigns,
+}: {
+  campaigns: AdminCampaignOverview[];
+}) {
+  const disputed = campaigns.filter((c) => c.campaign.status.tag === 'Disputed');
+  if (disputed.length === 0) return null;
+
+  return (
+    <div className={cardClass} data-testid="open-dispute-queue">
+      <h2 className="text-h4 text-soil-900 mb-2">Open dispute queue</h2>
+      <p className="mb-4 text-body-sm text-soil-500">
+        Campaigns with status Disputed need a resolution (FullRefund,
+        PartialSettlement, or FullPayout). Resolve them in the panel below —
+        after a successful resolve they leave this queue when status becomes
+        Resolved.
+      </p>
+      <ul className="divide-y divide-soil-100 rounded-lg border border-soil-200">
+        {disputed.map(({ id, campaign }) => {
+          const held =
+            campaign.total_funded -
+            campaign.released -
+            campaign.refundable -
+            campaign.returnable;
+          return (
+            <li
+              key={id}
+              className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-body-sm"
+            >
+              <div>
+                <p className="font-semibold text-soil-900">Campaign #{id}</p>
+                <p className="break-all font-mono text-caption text-soil-500">
+                  Farmer: {campaign.farmer}
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="text-caption text-soil-400">Escrow held</p>
+                <p className="font-semibold text-soil-900">{held.toString()}</p>
+              </div>
+              <a
+                href={`#admin-campaign-${id}`}
+                className="text-body-sm font-semibold text-leaf-700 hover:text-leaf-800"
+              >
+                Resolve →
+              </a>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
 export function AdminDashboardPage() {
   const wallet = useWallet();
   const adminQuery = useEscrowAdmin();
@@ -168,6 +222,10 @@ export function AdminDashboardPage() {
             <AdminOverview campaigns={campaignsQuery.data} />
           )}
 
+          {campaignsQuery.isSuccess && campaignsQuery.data.length > 0 && (
+            <OpenDisputeQueue campaigns={campaignsQuery.data} />
+          )}
+
           {campaignsQuery.isSuccess && campaignsQuery.data.length === 0 && (
             <div className={cardClass}>
               <p className="text-body-sm text-soil-500">
@@ -178,7 +236,9 @@ export function AdminDashboardPage() {
 
           {campaignsQuery.isSuccess &&
             campaignsQuery.data.map((overview) => (
-              <CampaignAdminPanel key={overview.id} overview={overview} />
+              <div key={overview.id} id={`admin-campaign-${overview.id}`}>
+                <CampaignAdminPanel overview={overview} />
+              </div>
             ))}
         </div>
       )}

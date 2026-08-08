@@ -9,6 +9,7 @@ import {
   useResolveDispute,
   useSettleCampaign,
   useMarkFailed,
+  useDispute,
 } from '../../hooks/contract';
 import { toUserFacingError } from '../../lib/soroban/userFacingError';
 import {
@@ -321,16 +322,46 @@ function ResolveDisputeForm({
   heldAmount: bigint;
 }) {
   const resolveDispute = useResolveDispute();
+  const disputeQuery = useDispute(campaignId);
   const [resolution, setResolution] =
     useState<DisputeResolutionTag>('FullRefund');
   const [payoutAmount, setPayoutAmount] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [lastSplit, setLastSplit] = useState<{
+    farmer: bigint;
+    refundable: bigint;
+  } | null>(null);
+
+  const partialParsed =
+    resolution === 'PartialSettlement'
+      ? parseWholeAmount(payoutAmount)
+      : null;
+  const previewSplit = (() => {
+    if (resolution === 'FullRefund') {
+      return { farmer: 0n, refundable: heldAmount };
+    }
+    if (resolution === 'FullPayout') {
+      return { farmer: heldAmount, refundable: 0n };
+    }
+    if (
+      partialParsed !== null &&
+      partialParsed > 0n &&
+      partialParsed < heldAmount
+    ) {
+      return {
+        farmer: partialParsed,
+        refundable: heldAmount - partialParsed,
+      };
+    }
+    return null;
+  })();
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
     setFormError(null);
     setSuccess(false);
+    setLastSplit(null);
 
     let amount = 0n;
     if (resolution === 'PartialSettlement') {
@@ -343,12 +374,23 @@ function ResolveDisputeForm({
       }
       amount = parsed;
     }
+    // FullRefund / FullPayout always submit zero payout (contract requirement).
 
     try {
       await resolveDispute.mutateAsync({
         campaignId,
         resolution,
         payoutAmount: amount,
+      });
+      const farmer =
+        resolution === 'FullPayout'
+          ? heldAmount
+          : resolution === 'PartialSettlement'
+            ? amount
+            : 0n;
+      setLastSplit({
+        farmer,
+        refundable: heldAmount - farmer,
       });
       setSuccess(true);
       setPayoutAmount('');
@@ -357,12 +399,49 @@ function ResolveDisputeForm({
     }
   }
 
+  const dispute = disputeQuery.data;
+
   return (
-    <form onSubmit={handleSubmit} className="space-y-3">
+    <form
+      onSubmit={handleSubmit}
+      className="space-y-3"
+      data-testid="resolve-dispute-form"
+    >
       <h3 className={sectionTitleClass}>Resolve dispute</h3>
       <p className="text-body-sm text-soil-500">
-        Escrow held: {heldAmount.toString()} (contract units)
+        Escrow held:{' '}
+        <span className="font-semibold text-soil-800">
+          {heldAmount.toString()}
+        </span>{' '}
+        (contract units). Full refund / full payout submit with a zero payout
+        amount automatically.
       </p>
+
+      {disputeQuery.isLoading && (
+        <p className="text-caption text-soil-400">Loading dispute details…</p>
+      )}
+      {dispute && (
+        <dl
+          className="grid grid-cols-1 gap-2 rounded-lg border border-soil-200 bg-soil-50 p-3 text-body-sm sm:grid-cols-2"
+          data-testid="dispute-details"
+        >
+          <div>
+            <dt className="text-caption text-soil-400">Opener</dt>
+            <dd className="break-all font-mono text-soil-800">
+              {dispute.opener}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-caption text-soil-400">Reason</dt>
+            <dd className="font-mono text-soil-800">{dispute.reason}</dd>
+          </div>
+          <div>
+            <dt className="text-caption text-soil-400">Status</dt>
+            <dd className="text-soil-800">{dispute.status.tag}</dd>
+          </div>
+        </dl>
+      )}
+
       <div>
         <label className={labelClass} htmlFor="dispute-resolution">
           Resolution
@@ -400,6 +479,15 @@ function ResolveDisputeForm({
           </p>
         </div>
       )}
+      {previewSplit && (
+        <p
+          className="text-caption text-soil-600"
+          data-testid="dispute-split-preview"
+        >
+          Preview — farmer payout: {previewSplit.farmer.toString()}, investor
+          refundable: {previewSplit.refundable.toString()}
+        </p>
+      )}
       <button
         type="submit"
         disabled={resolveDispute.isPending}
@@ -410,7 +498,10 @@ function ResolveDisputeForm({
       <ActionError message={formError} />
       {success && (
         <p className="text-caption text-status-active-dark">
-          Dispute resolved.
+          Dispute resolved
+          {lastSplit
+            ? ` — farmer ${lastSplit.farmer.toString()}, refundable ${lastSplit.refundable.toString()}. Campaign moves to Resolved and leaves the open-dispute queue.`
+            : '.'}
         </p>
       )}
     </form>
