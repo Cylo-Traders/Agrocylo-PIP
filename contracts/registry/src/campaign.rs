@@ -33,6 +33,34 @@ pub fn get_campaign(env: &Env, campaign_id: u64) -> Option<CampaignInfo> {
     storage::get_campaign(env, campaign_id)
 }
 
+/// Updates title/description for an already-registered campaign.
+/// Callable by the campaign's registered farmer or the registry admin.
+/// Does not change `id`, `farmer`, or `created_at`.
+pub fn update_campaign_metadata(
+    env: &Env,
+    campaign_id: u64,
+    caller: Address,
+    title: String,
+    description: String,
+) {
+    let mut campaign = storage::get_campaign(env, campaign_id)
+        .unwrap_or_else(|| panic!("campaign not registered"));
+
+    let is_farmer = campaign.farmer == caller;
+    let is_admin = storage::has_admin(env) && storage::get_admin(env) == caller;
+    if !is_farmer && !is_admin {
+        panic!("not authorized to update campaign metadata");
+    }
+    caller.require_auth();
+
+    campaign.title = title.clone();
+    campaign.description = description;
+    storage::set_campaign(env, &campaign);
+    storage::extend_instance_ttl(env);
+
+    events::campaign_metadata_updated(env, campaign_id, campaign.farmer, title);
+}
+
 /// Links a campaign to its ProductionEscrowContract instance and crop/region
 /// metadata, and begins tracking its lifecycle status. Distinct from
 /// `register_campaign`, which stores the farmer-authored title/description.

@@ -774,3 +774,170 @@ fn test_get_campaigns_by_farmer_empty() {
     let campaigns = client.get_campaigns_by_farmer(&user);
     assert_eq!(campaigns.len(), 0);
 }
+
+// ---------------------------------------------------------------------------
+// update_farmer_profile / update_campaign_metadata
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_update_farmer_profile_success() {
+    let (env, admin, user, _, client) = create_test_env();
+    client.initialize(&admin);
+
+    let name = String::from_str(&env, "Ada Farmer");
+    let location = String::from_str(&env, "Kenya");
+    client.register_farmer(&user, &name, &location);
+
+    let registered_at = client.get_farmer(&user).unwrap().registration_time;
+
+    let new_name = String::from_str(&env, "Ada Okello");
+    let new_location = String::from_str(&env, "Uganda");
+    client.update_farmer_profile(&user, &new_name, &new_location);
+
+    let profile = client.get_farmer(&user).unwrap();
+    assert_eq!(profile.name, new_name);
+    assert_eq!(profile.location, new_location);
+    assert_eq!(profile.address, user);
+    // registration_time is preserved across updates
+    assert_eq!(profile.registration_time, registered_at);
+
+    let event = env.events().all().last().unwrap();
+    assert_eq!(
+        event.1,
+        (Symbol::new(&env, "FarmerUpdated"), user.clone()).into_val(&env)
+    );
+}
+
+#[test]
+#[should_panic(expected = "farmer not registered")]
+fn test_update_farmer_profile_nonexistent_fails() {
+    let (env, admin, user, _, client) = create_test_env();
+    client.initialize(&admin);
+
+    let name = String::from_str(&env, "Ghost");
+    let location = String::from_str(&env, "Nowhere");
+    client.update_farmer_profile(&user, &name, &location);
+}
+
+#[test]
+#[should_panic]
+fn test_update_farmer_profile_unauthorized_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+    let stranger = Address::generate(&env);
+    let contract_id = env.register_contract(None, RegistryContract);
+    let client = RegistryContractClient::new(&env, &contract_id);
+
+    client.initialize(&admin);
+    client.register_farmer(
+        &user,
+        &String::from_str(&env, "Ada"),
+        &String::from_str(&env, "Kenya"),
+    );
+
+    // Only authorize a stranger — farmer.require_auth() must fail.
+    let new_name = String::from_str(&env, "Hacked");
+    let new_location = String::from_str(&env, "Elsewhere");
+    env.mock_auths(&[MockAuth {
+        address: &stranger,
+        invoke: &MockAuthInvoke {
+            contract: &contract_id,
+            fn_name: "update_farmer_profile",
+            args: (user.clone(), new_name.clone(), new_location.clone()).into_val(&env),
+            sub_invokes: &[],
+        },
+    }]);
+
+    client.update_farmer_profile(&user, &new_name, &new_location);
+}
+
+#[test]
+fn test_update_campaign_metadata_by_farmer() {
+    let (env, admin, user, _, client) = create_test_env();
+    client.initialize(&admin);
+
+    let campaign_id = 1u64;
+    let title = String::from_str(&env, "Coffee A");
+    let description = String::from_str(&env, "Old desc");
+    client.register_campaign(&campaign_id, &user, &title, &description);
+
+    let new_title = String::from_str(&env, "Coffee B");
+    let new_description = String::from_str(&env, "New desc");
+    client.update_campaign_metadata(&campaign_id, &user, &new_title, &new_description);
+
+    let campaign = client.get_campaign(&campaign_id).unwrap();
+    assert_eq!(campaign.title, new_title);
+    assert_eq!(campaign.description, new_description);
+    assert_eq!(campaign.farmer, user);
+    assert_eq!(campaign.id, campaign_id);
+
+    let event = env.events().all().last().unwrap();
+    assert_eq!(
+        event.1,
+        (Symbol::new(&env, "CampaignMetadataUpdated"), campaign_id).into_val(&env)
+    );
+}
+
+#[test]
+fn test_update_campaign_metadata_by_admin() {
+    let (env, admin, user, _, client) = create_test_env();
+    client.initialize(&admin);
+
+    let campaign_id = 7u64;
+    client.register_campaign(
+        &campaign_id,
+        &user,
+        &String::from_str(&env, "Title"),
+        &String::from_str(&env, "Desc"),
+    );
+
+    let new_title = String::from_str(&env, "Admin Fix");
+    let new_description = String::from_str(&env, "Corrected");
+    client.update_campaign_metadata(&campaign_id, &admin, &new_title, &new_description);
+
+    let campaign = client.get_campaign(&campaign_id).unwrap();
+    assert_eq!(campaign.title, new_title);
+    assert_eq!(campaign.description, new_description);
+    // Farmer ownership unchanged
+    assert_eq!(campaign.farmer, user);
+}
+
+#[test]
+#[should_panic(expected = "campaign not registered")]
+fn test_update_campaign_metadata_nonexistent_fails() {
+    let (env, admin, user, _, client) = create_test_env();
+    client.initialize(&admin);
+
+    client.update_campaign_metadata(
+        &999u64,
+        &user,
+        &String::from_str(&env, "Nope"),
+        &String::from_str(&env, "Missing"),
+    );
+}
+
+#[test]
+#[should_panic(expected = "not authorized to update campaign metadata")]
+fn test_update_campaign_metadata_unauthorized_fails() {
+    let (env, admin, user, _, client) = create_test_env();
+    client.initialize(&admin);
+
+    let campaign_id = 1u64;
+    client.register_campaign(
+        &campaign_id,
+        &user,
+        &String::from_str(&env, "Title"),
+        &String::from_str(&env, "Desc"),
+    );
+
+    let stranger = Address::generate(&env);
+    client.update_campaign_metadata(
+        &campaign_id,
+        &stranger,
+        &String::from_str(&env, "Stolen"),
+        &String::from_str(&env, "Nope"),
+    );
+}

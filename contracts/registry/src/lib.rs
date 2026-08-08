@@ -45,6 +45,16 @@ impl RegistryContract {
         farmer::register_farmer(&env, farmer, name, location);
     }
 
+    /// Updates an existing farmer's name/location. Requires the farmer's auth.
+    pub fn update_farmer_profile(
+        env: Env,
+        farmer: Address,
+        name: String,
+        location: String,
+    ) {
+        farmer::update_farmer_profile(&env, farmer, name, location);
+    }
+
     pub fn get_farmer(env: Env, farmer: Address) -> Option<FarmerProfile> {
         farmer::get_farmer(&env, &farmer)
     }
@@ -57,6 +67,18 @@ impl RegistryContract {
         description: String,
     ) {
         campaign::register_campaign(&env, campaign_id, farmer, title, description);
+    }
+
+    /// Updates title/description for a registered campaign. Requires the
+    /// campaign farmer's or admin's authorization.
+    pub fn update_campaign_metadata(
+        env: Env,
+        campaign_id: u64,
+        caller: Address,
+        title: String,
+        description: String,
+    ) {
+        campaign::update_campaign_metadata(&env, campaign_id, caller, title, description);
     }
 
     pub fn get_campaign(env: Env, campaign_id: u64) -> Option<CampaignInfo> {
