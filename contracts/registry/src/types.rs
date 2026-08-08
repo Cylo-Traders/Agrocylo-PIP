@@ -47,14 +47,17 @@ pub struct CampaignInfo {
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
+/// Mirrored from ProductionEscrowContract::CampaignStatus (keep variants in lockstep).
 pub enum CampaignStatus {
     Active,
     Funding,
     Funded,
     InProduction,
+    Harvested,
     Disputed,
     Resolved,
     Settled,
+    Failed,
 }
 
 /// Links a campaign to its ProductionEscrowContract instance and crop/region

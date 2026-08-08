@@ -98,6 +98,10 @@ pub fn get_campaign_record(env: &Env, campaign_id: u64) -> CampaignRecord {
     storage::get_campaign_record(env, campaign_id)
 }
 
+pub fn has_campaign_record(env: &Env, campaign_id: u64) -> bool {
+    storage::has_campaign_record(env, campaign_id)
+}
+
 pub fn get_campaigns_by_farmer(env: &Env, farmer: &Address) -> Vec<u64> {
     storage::get_farmer_campaigns(env, farmer)
 }

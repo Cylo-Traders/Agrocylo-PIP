@@ -5,9 +5,30 @@ This document describes how the `ProductionEscrowContract` and `RegistryContract
 ## Overview
 
 - **ProductionEscrowContract** owns campaign financial state (funding, escrow, disputes, settlements) and emits canonical events for every state change.
-- **RegistryContract** owns the audit trail of campaign activities and access-control lists (admin, approved contracts). It is the source of truth for *who* did *what* and *when*.
+- **RegistryContract** owns the audit trail of campaign activities, discovery metadata, and access-control lists (admin, approved contracts).
 
-In the intended integration, `ProductionEscrowContract` (or an authorized backend service acting on its behalf) calls `RegistryContract::record_activity` after each significant lifecycle step. The `ProductionEscrowContract` address must first be registered in the `RegistryContract` via `approve_contract`.
+### On-chain registry sync (Issue #96)
+
+Escrow can optionally point at a registry via admin `set_registry` / `get_registry`:
+
+1. Deploy both contracts; call `RegistryContract::initialize` + `approve_contract(escrow_address)`.
+2. Call `ProductionEscrowContract::set_registry(registry_address)` as escrow admin.
+3. Lifecycle methods then invoke the registry **on-chain**:
+   - `create_campaign` → `link_campaign_escrow` + `record_activity(CampaignCreated)` + status `Active`
+   - `fund_campaign` / `receive_contribution` → `record_activity(CampaignFunded)` + status mirror
+   - `complete_funding` → `CampaignFunded` + `Funded`
+   - `release_tranche` → `FundsReleased` + status (e.g. `InProduction`)
+   - `report_harvest` → `HarvestReported` + `Harvested`
+   - `open_dispute` / `resolve_dispute` → dispute actions + status
+   - `settle_campaign` → `CampaignSettled` + `Settled`
+   - `mark_failed` → `CampaignStatusChanged` + `Failed`
+
+**Failure policy (fail-closed):** when a registry address is configured, a failed registry call (including “escrow not approved”) panics and rolls back the escrow transaction so financial state and the audit trail stay consistent. When **no** registry is configured, sync is a no-op (unit tests and escrow-only deployments keep working).
+
+**Deployment order:** if `set_registry` is used, always `approve_contract` first. Unapproved escrow panics with:  
+`escrow not approved in registry: call RegistryContract::approve_contract first`.
+
+Off-chain indexers may still call `record_activity` for operators that prefer not to wire on-chain sync.
 
 ## Contract Responsibilities
 
@@ -16,6 +37,7 @@ In the intended integration, `ProductionEscrowContract` (or an authorized backen
 | Responsibility | Implementation |
 |----------------|----------------|
 | Campaign creation & metadata | `create_campaign` |
+| Optional registry pointer | `set_registry`, `get_registry` |
 | Receiving investor token contributions | `fund_campaign` |
 | Reconciling externally verified contributions | `receive_contribution` (admin only) |
 | Marking a reconciled campaign as fully funded | `complete_funding` (admin only) |
@@ -25,6 +47,7 @@ In the intended integration, `ProductionEscrowContract` (or an authorized backen
 | Investor refunds after resolution | `claim_refund` |
 | Final campaign settlement | `settle_campaign` |
 | Event emission for all state transitions | Soroban events (see table below) |
+| Optional on-chain registry sync | after lifecycle methods when registry is set |
 
 ### RegistryContract
 
@@ -32,6 +55,7 @@ In the intended integration, `ProductionEscrowContract` (or an authorized backen
 |----------------|----------------|
 | Admin management | `initialize`, `update_admin`, `get_admin` |
 | Approved-contract allowlist | `approve_contract`, `revoke_contract`, `is_contract_approved` |
+| Escrow link + mirrored status | `link_campaign_escrow`, `update_campaign_status`, `has_campaign_record` |
 | Recording campaign audit activities | `record_activity` |
 | Retrieving campaign activity history | `get_campaign_activities` |
 | Event emission for registry changes | Soroban events (see table below) |
