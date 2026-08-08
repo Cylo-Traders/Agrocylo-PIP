@@ -9,9 +9,7 @@ import {
   useResolveDispute,
   useSettleCampaign,
   useMarkFailed,
-  useTranches,
-  useDispute,
-} from '../../hooks/contract';
+  useTranches,\n} from '../../hooks/contract';
 import { toUserFacingError } from '../../lib/soroban/userFacingError';
 import {
   CONTRACT_SYMBOL_HINT,
