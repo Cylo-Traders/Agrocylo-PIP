@@ -733,6 +733,37 @@ fn test_update_campaign_status_as_admin() {
     assert_eq!(record.status, CampaignStatus::Settled);
 }
 
+/// Registry status variants must cover the full escrow lifecycle (including
+/// Harvested / Failed) so mirrored discovery stays 1:1 with ProductionEscrow.
+#[test]
+fn test_update_campaign_status_full_lifecycle_variants() {
+    let (env, admin, user, escrow, client) = create_test_env();
+    client.initialize(&admin);
+
+    let campaign_id = 1u64;
+    let crop = Symbol::new(&env, "coffee");
+    let region = Symbol::new(&env, "highlands");
+    client.link_campaign_escrow(&campaign_id, &user, &escrow, &crop, &region);
+
+    let stages = [
+        CampaignStatus::Funding,
+        CampaignStatus::Funded,
+        CampaignStatus::InProduction,
+        CampaignStatus::Harvested,
+        CampaignStatus::Disputed,
+        CampaignStatus::Resolved,
+        CampaignStatus::Settled,
+        CampaignStatus::Failed,
+        CampaignStatus::Active,
+    ];
+
+    for status in stages {
+        client.update_campaign_status(&campaign_id, &escrow, &status);
+        let record = client.get_campaign_record(&campaign_id);
+        assert_eq!(record.status, status);
+    }
+}
+
 #[test]
 #[should_panic(expected = "unauthorized: caller is not the registered escrow contract or admin")]
 fn test_update_campaign_status_unauthorized_caller_fails() {
