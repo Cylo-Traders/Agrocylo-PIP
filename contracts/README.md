@@ -59,6 +59,28 @@ See [INTEGRATION.md](./INTEGRATION.md) for the full integration guide covering:
 - Campaign lifecycle diagram
 - Example transaction flows
 
+## Error-handling conventions
+
+Public **read** methods that look up optional on-chain state should return
+`Option<T>` (or a documented `Result`) rather than panicking when the key is
+missing. This lets frontends and indexers treat "not found" as a normal case
+instead of an opaque Soroban host panic.
+
+| Method (contract) | Missing key |
+| --- | --- |
+| `RegistryContract::get_campaign` / `get_farmer` | `None` |
+| `ProductionEscrowContract::get_campaign` | `None` |
+| `ProductionEscrowContract::get_dispute` | `None` |
+| `ProductionEscrowContract::get_harvest_record` | `None` |
+
+**Write** paths and privileged mutators may still `panic!` (or later use a
+shared `#[contracterror]`) when preconditions fail (wrong status, unauthorized
+caller, etc.). Prefer clear panic messages until a unified error enum is
+introduced.
+
+When adding new public getters, prefer `Option<T>` for existence checks so the
+platform stays consistent across contracts.
+
 ## Building
 
 ```bash
@@ -68,7 +90,7 @@ cargo build --target wasm32-unknown-unknown --release
 ## Testing
 
 ```bash
-cargo test
+cargo test --locked
 ```
 
 ## Development
