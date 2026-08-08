@@ -32,6 +32,9 @@ In the intended integration, `ProductionEscrowContract` (or an authorized backen
 |----------------|----------------|
 | Admin management | `initialize`, `update_admin`, `get_admin` |
 | Approved-contract allowlist | `approve_contract`, `revoke_contract`, `is_contract_approved` |
+| Farmer profile + campaign title/description | `register_farmer`, `update_farmer_profile`, `register_campaign`, `update_campaign_metadata` |
+| Escrow link + **mirrored** lifecycle status | `link_campaign_escrow`, `update_campaign_status`, `get_campaign_record` |
+| Farmer campaign discovery | `get_campaigns_by_farmer` → `Vec<u64>` |
 | Recording campaign audit activities | `record_activity` |
 | Retrieving campaign activity history | `get_campaign_activities` |
 | Event emission for registry changes | Soroban events (see table below) |
@@ -43,13 +46,36 @@ In the intended integration, `ProductionEscrowContract` (or an authorized backen
 | Admin address | RegistryContract | Instance | `DataKey::Admin` |
 | Approved contract list | RegistryContract | Instance | `DataKey::ApprovedContract(Address)` |
 | Campaign activity history | RegistryContract | Persistent | `DataKey::CampaignActivities(u64)` |
-| Campaign metadata (farmer, target, token, deadline, harvest) | ProductionEscrowContract | Persistent | `DataKey::Campaign(u64)` |
+| Farmer-authored campaign metadata (title/description) | RegistryContract | Persistent | `DataKey::Campaign(u64)` → `CampaignInfo` |
+| Escrow-linked campaign record + **mirrored status** | RegistryContract | Persistent | `DataKey::CampaignRecord(u64)` → `CampaignRecord.status` |
+| Farmer → campaign ID list | RegistryContract | Persistent | `DataKey::FarmerCampaigns(Address)` via `get_campaigns_by_farmer` |
+| Campaign financial metadata (target, token, deadline, harvest) | ProductionEscrowContract | Persistent | `DataKey::Campaign(u64)` |
 | Campaign financials (`total_funded`, `released`, `refundable`) | ProductionEscrowContract | Persistent | Inside `Campaign` struct |
-| Campaign status | ProductionEscrowContract | Persistent | `Campaign.status` (`CampaignStatus`) |
+| **Authoritative** campaign status | ProductionEscrowContract | Persistent | `Campaign.status` (`CampaignStatus`) |
 | Investor contribution ledger | ProductionEscrowContract | Persistent | `DataKey::Contribution(u64, Address)` |
 | Dispute record | ProductionEscrowContract | Persistent | `DataKey::Dispute(u64)` |
 
-> **Rule of thumb:** Financial and dispute state lives in `ProductionEscrowContract`. Audit and access-control state lives in `RegistryContract`.
+> **Rule of thumb:** Financial and dispute state lives in `ProductionEscrowContract`. Audit, discovery metadata, and access-control state live in `RegistryContract`.
+
+### Campaign status: authority vs discovery mirror
+
+**Decision (Issue #69):** status is **owned** by `ProductionEscrowContract` and **optionally mirrored** into `RegistryContract::CampaignRecord` for discovery efficiency.
+
+| Layer | API | Role |
+|-------|-----|------|
+| Source of truth | `ProductionEscrowContract::get_campaign` → `Campaign.status` | All financial transitions; always authoritative |
+| Discovery mirror | `RegistryContract::get_campaign_record` → `CampaignRecord.status` | Optional cache for list/discovery UIs after `link_campaign_escrow` |
+| Status updates | `RegistryContract::update_campaign_status` | Admin or the linked escrow address only |
+| Farmer campaign list | `RegistryContract::get_campaigns_by_farmer` | Returns `Vec<u64>` of linked campaign IDs (populated by `link_campaign_escrow`) |
+
+**Why mirror instead of registry-only status?** Escrow state machines (refunds, disputes, solvency checks) must keep status next to balances. Forcing every list view to call escrow N times is costly for indexers and frontends, so the registry stores a copy updated by authorized callers.
+
+**Integrator rules:**
+
+1. Call `link_campaign_escrow` once when a campaign is created so a `CampaignRecord` exists.
+2. On every escrow lifecycle transition, also call `update_campaign_status` (and/or `record_activity`) from the approved escrow contract or a trusted backend. Until issue #96 wires this on-chain, off-chain automation is required.
+3. If the mirror is stale or missing, **prefer escrow** `get_campaign` for any action that moves funds.
+4. Registry and escrow `CampaignStatus` enums include the same variants (`Active` … `Harvested` … `Failed`) so status tags can be mapped 1:1.
 
 ## Rounding / Dust Policy
 

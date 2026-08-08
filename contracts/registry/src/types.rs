@@ -47,14 +47,19 @@ pub struct CampaignInfo {
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
+/// Lifecycle status mirrored from `ProductionEscrowContract::CampaignStatus`.
+/// Variants must stay in lockstep with the escrow enum so discovery UIs and
+/// indexers can render a full lifecycle without N+1 cross-contract reads.
 pub enum CampaignStatus {
     Active,
     Funding,
     Funded,
     InProduction,
+    Harvested,
     Disputed,
     Resolved,
     Settled,
+    Failed,
 }
 
 /// Links a campaign to its ProductionEscrowContract instance and crop/region
