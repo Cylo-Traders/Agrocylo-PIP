@@ -12,7 +12,21 @@ export const envValidationSchema = Joi.object({
   LOG_LEVEL: Joi.string()
     .valid('trace', 'debug', 'info', 'warn', 'error', 'fatal')
     .default('info'),
-  DATABASE_URL: Joi.string().default('file:./dev.db'),
+  DATABASE_URL: Joi.string().when('NODE_ENV', {
+    is: 'production',
+    then: Joi.string()
+      .required()
+      .invalid('file:./dev.db')
+      .pattern(/^(?!file:).+$/, { name: 'non-local URL' })
+      .messages({
+        'any.required': 'DATABASE_URL is required in production environment',
+        'any.invalid':
+          'DATABASE_URL cannot use default embedded SQLite file:./dev.db in production',
+        'string.pattern.name':
+          'DATABASE_URL cannot be a local file: URI in production',
+      }),
+    otherwise: Joi.string().default('file:./dev.db'),
+  }),
   SOROBAN_RPC_URL: Joi.string()
     .uri()
     .default('https://soroban-testnet.stellar.org'),
