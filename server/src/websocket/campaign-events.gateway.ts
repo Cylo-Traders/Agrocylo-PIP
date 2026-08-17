@@ -9,6 +9,7 @@ import {
 import { SkipThrottle } from '@nestjs/throttler';
 import type { Server, Socket } from 'socket.io';
 import { RealtimeEventsService } from './realtime-events.service';
+import configuration from '../config/configuration';
 import {
   ACTIVITY_ROOM,
   CAMPAIGN_EVENT,
@@ -20,12 +21,23 @@ import {
   type CampaignEventPayload,
 } from './events.types';
 
+const appConfig = configuration();
+const corsAllowedOrigins =
+  appConfig.app.corsAllowedOrigins.length > 0
+    ? appConfig.app.corsAllowedOrigins
+    : false;
+
 /**
  * Push channel for campaign updates. Clients opt into rooms explicitly
  * (per-campaign + the global activity feed) rather than receiving a
  * firehose of every event for every campaign.
  */
-@WebSocketGateway({ cors: { origin: '*' } })
+@WebSocketGateway({
+  cors: {
+    origin: corsAllowedOrigins,
+    credentials: true,
+  },
+})
 @SkipThrottle()
 export class CampaignEventsGateway implements OnModuleInit {
   @WebSocketServer()

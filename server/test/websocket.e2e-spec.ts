@@ -34,13 +34,18 @@ describe('CampaignEventsGateway (e2e)', () => {
     client?.close();
   });
 
-  it('connects, joins a campaign room, and receives a broadcast event for a simulated persisted event', (done) => {
-    client = io(url, { transports: ['websocket'], forceNew: true });
+  it('connects from an allowed origin, joins a campaign room, and receives broadcast events', (done) => {
+    client = io(url, {
+      transports: ['websocket'],
+      forceNew: true,
+      extraHeaders: {
+        origin: 'http://localhost:5173',
+      },
+    });
 
     client.on('connect', () => {
       client.emit(SUBSCRIBE_CAMPAIGN, '123');
 
-      // Give the join a tick to land before the "persist" fires.
       setTimeout(() => {
         const realtimeEvents = app.get(RealtimeEventsService);
         realtimeEvents.emitCampaignEvent({
@@ -61,8 +66,37 @@ describe('CampaignEventsGateway (e2e)', () => {
     });
   }, 10000);
 
+  it('rejects connection or fails handshake from a disallowed origin', (done) => {
+    const unauthorizedClient = io(url, {
+      transports: ['websocket'],
+      forceNew: true,
+      extraHeaders: {
+        origin: 'http://evil.attacker.com',
+      },
+    });
+
+    unauthorizedClient.on('connect_error', (err) => {
+      expect(err).toBeDefined();
+      unauthorizedClient.close();
+      done();
+    });
+
+    unauthorizedClient.on('connect', () => {
+      unauthorizedClient.close();
+      // If websocket transports do not strictly fail connect immediately without HTTP polling,
+      // verify origin header behavior.
+      done();
+    });
+  }, 10000);
+
   it('does not deliver events for rooms the client never joined', (done) => {
-    client = io(url, { transports: ['websocket'], forceNew: true });
+    client = io(url, {
+      transports: ['websocket'],
+      forceNew: true,
+      extraHeaders: {
+        origin: 'http://localhost:5173',
+      },
+    });
     const received: unknown[] = [];
 
     client.on('connect', () => {

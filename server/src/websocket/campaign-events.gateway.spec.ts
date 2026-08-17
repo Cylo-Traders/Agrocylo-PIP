@@ -1,6 +1,7 @@
 import { CampaignEventsGateway } from './campaign-events.gateway';
 import { RealtimeEventsService } from './realtime-events.service';
 import { ACTIVITY_ROOM, campaignRoom } from './events.types';
+import { GATEWAY_OPTIONS } from '@nestjs/websockets/constants';
 
 function mockSocket() {
   return { join: jest.fn(), leave: jest.fn() } as any;
@@ -18,6 +19,16 @@ describe('CampaignEventsGateway', () => {
     emit = jest.fn();
     to = jest.fn().mockReturnValue({ emit });
     gateway.server = { to } as any;
+  });
+
+  it('does not use wildcard "*" in WebSocketGateway CORS options', () => {
+    const gatewayOptions = Reflect.getMetadata(
+      GATEWAY_OPTIONS,
+      CampaignEventsGateway,
+    );
+    expect(gatewayOptions).toBeDefined();
+    expect(gatewayOptions.cors).toBeDefined();
+    expect(gatewayOptions.cors.origin).not.toBe('*');
   });
 
   it('joins a client to a campaign room on subscribe', () => {
