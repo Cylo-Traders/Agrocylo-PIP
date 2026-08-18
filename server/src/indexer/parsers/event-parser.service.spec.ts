@@ -4,7 +4,11 @@ import type { RawSorobanEvent } from '../types/soroban-events.types';
 
 type MockPrisma = {
   transaction: { findUnique: jest.Mock; create: jest.Mock };
-  campaign: { upsert: jest.Mock; update: jest.Mock };
+  campaign: {
+    upsert: jest.Mock;
+    update: jest.Mock;
+    updateMany: jest.Mock;
+  };
   user: { upsert: jest.Mock };
   investment: { create: jest.Mock };
   tranche: { create: jest.Mock };
@@ -20,6 +24,7 @@ function makeMockPrisma(): MockPrisma {
     campaign: {
       upsert: jest.fn().mockResolvedValue({}),
       update: jest.fn().mockResolvedValue({}),
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
     user: {
       upsert: jest.fn().mockResolvedValue({}),
@@ -253,6 +258,55 @@ describe('EventParserService', () => {
       );
       expect(errorSpy).toHaveBeenCalled();
       expect(prisma.tranche.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('TrancheReleased -> InProduction status', () => {
+    it('flips a Funded campaign to InProduction on the first release', async () => {
+      await service.processEvent(
+        rawEvent(
+          'e5-status-1',
+          ['TrancheReleased', CAMPAIGN_ID],
+          [FARMER, 1700000000n, 400n],
+        ),
+      );
+
+      expect(prisma.campaign.updateMany).toHaveBeenCalledWith({
+        where: { id: '123', status: 'Funded' },
+        data: { status: 'InProduction' },
+      });
+    });
+
+    it('leaves an already-InProduction campaign unchanged on later releases', async () => {
+      // Simulate an already-released campaign: the conditional update matches
+      // nothing (status is no longer Funded), so no additional write occurs.
+      prisma.campaign.updateMany.mockResolvedValueOnce({ count: 0 });
+
+      await service.processEvent(
+        rawEvent(
+          'e5-status-2a',
+          ['TrancheReleased', CAMPAIGN_ID],
+          [FARMER, 1700000000n, 400n],
+        ),
+      );
+      await service.processEvent(
+        rawEvent(
+          'e5-status-2b',
+          ['TrancheReleased', CAMPAIGN_ID],
+          [FARMER, 1700000000n, 400n],
+        ),
+      );
+
+      expect(prisma.campaign.updateMany).toHaveBeenCalledTimes(2);
+      // Every status mutation stays guarded by status: 'Funded', so a second
+      // release can never reset or duplicate-write an InProduction campaign.
+      for (const call of prisma.campaign.updateMany.mock.calls) {
+        expect(call[0]).toEqual({
+          where: { id: '123', status: 'Funded' },
+          data: { status: 'InProduction' },
+        });
+      }
+      expect(prisma.tranche.create).toHaveBeenCalledTimes(2);
     });
   });
 
