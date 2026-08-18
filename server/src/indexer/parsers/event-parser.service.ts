@@ -73,6 +73,15 @@ function isTagLike(v: unknown): boolean {
   return false;
 }
 
+/**
+ * Heuristic: enum variants (ActivityAction) are PascalCase without spaces.
+ * User-provided titles/names typically contain spaces or lowercase.
+ * This distinguishes bare-string enum tags from genuine titles.
+ */
+function looksLikeEnumTag(v: unknown): boolean {
+  return typeof v === 'string' && /^[A-Z][a-zA-Z0-9]*$/.test(v);
+}
+
 @Injectable()
 export class EventParserService {
   private readonly logger = new Logger(EventParserService.name);
@@ -665,8 +674,15 @@ export class EventParserService {
     const farmer = asString(topics[1], 'farmer');
     const timestamp = asNumber(arr[arr.length - 2], 'timestamp');
     const ledgerSequence = asNumber(arr[arr.length - 1], 'ledgerSequence');
-    const nameCandidate = arr.length >= 4 ? arr[1] : undefined;
-    const name = typeof nameCandidate === 'string' ? nameCandidate : undefined;
+    // Disambiguate deterministically:
+    // - Direct call: (farmer, name:string, timestamp, ledger_sequence) => 4 elements
+    // - Activity mirror: (actor, timestamp, ledger_sequence) => 3 elements
+    // If a 4-element payload has an enum tag at index 1 (decoded as array/object),
+    // treat it as activity mirror and ignore the name.
+    const name =
+      arr.length === 4 && !isTagLike(arr[1]) && !looksLikeEnumTag(arr[1])
+        ? asString(arr[1], 'name')
+        : undefined;
     const data: FarmerRegisteredData = {
       farmer,
       name,
@@ -689,21 +705,28 @@ export class EventParserService {
     topics: unknown[],
     arr: unknown[],
   ): ParsedEvent {
-    if (arr.length < 4)
+    if (arr.length < 3)
       throw new Error(
-        'CampaignRegistered payload must have at least 4 elements',
+        'CampaignRegistered payload must have at least 3 elements',
       );
     const campaignId = asString(topics[1], 'campaignId');
     // value[0] is the farmer/actor address in both emission shapes.
     const farmer = asString(arr[0], 'farmer');
     const timestamp = asNumber(arr[arr.length - 2], 'timestamp');
     const ledgerSequence = asNumber(arr[arr.length - 1], 'ledgerSequence');
-    // The direct campaign_registered() call publishes a plain-string title in
-    // slot 1; the activity-log mirror publishes an ActivityAction enum tag
-    // there instead. Only trust it as a title when it decoded to a string.
+    // Disambiguate deterministically:
+    // - Direct call: (farmer, title:string, timestamp, ledger_sequence)
+    // - Activity mirror: (actor, action_type:enum, timestamp, ledger_sequence)
+    // Enum decodes as array ['Variant'], { tag: 'Variant' }, or bare string 'Variant'.
+    // Use isTagLike for array/object; for bare strings, use PascalCase heuristic
+    // (enum variants are PascalCase without spaces; titles typically contain spaces/lowercase).
     const titleCandidate = arr[1];
     const title =
-      typeof titleCandidate === 'string' ? titleCandidate : undefined;
+      !isTagLike(titleCandidate) &&
+      !looksLikeEnumTag(titleCandidate) &&
+      typeof titleCandidate === 'string'
+        ? titleCandidate
+        : undefined;
     const data: CampaignCreatedData = {
       campaignId,
       farmer,
