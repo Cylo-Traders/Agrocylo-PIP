@@ -581,6 +581,98 @@ describe('EventParserService', () => {
       expect(errorSpy).toHaveBeenCalled();
       expect(prisma.campaign.upsert).not.toHaveBeenCalled();
     });
+
+    // Regression tests for enum-decoding shapes (issue #170):
+    // The activity-log mirror emits ActivityAction enum which can decode as:
+    // 1. Bare string (e.g., 'CampaignRegistered')
+    // 2. Single-element array (e.g., ['CampaignRegistered'])
+    // 3. Object with tag (e.g., { tag: 'CampaignRegistered' })
+    // All three must NOT be mistaken for a title/name.
+    describe('enum-decoding shape regression', () => {
+      it('FarmerRegistered: bare-string enum tag is not misread as name', async () => {
+        await service.processEvent(
+          rawEvent(
+            'e-fr-bare',
+            ['FarmerRegistered', FARMER],
+            [FARMER, 'FarmerRegistered', 1700000000n, 12],
+          ),
+        );
+        expect(prisma.user.upsert).toHaveBeenCalledWith(
+          expect.objectContaining({ where: { address: FARMER }, update: {} }),
+        );
+      });
+
+      it('FarmerRegistered: array enum tag is not misread as name', async () => {
+        await service.processEvent(
+          rawEvent(
+            'e-fr-arr',
+            ['FarmerRegistered', FARMER],
+            [FARMER, ['FarmerRegistered'], 1700000000n, 12],
+          ),
+        );
+        expect(prisma.user.upsert).toHaveBeenCalledWith(
+          expect.objectContaining({ where: { address: FARMER }, update: {} }),
+        );
+      });
+
+      it('FarmerRegistered: object enum tag is not misread as name', async () => {
+        await service.processEvent(
+          rawEvent(
+            'e-fr-obj',
+            ['FarmerRegistered', FARMER],
+            [FARMER, { tag: 'FarmerRegistered' }, 1700000000n, 12],
+          ),
+        );
+        expect(prisma.user.upsert).toHaveBeenCalledWith(
+          expect.objectContaining({ where: { address: FARMER }, update: {} }),
+        );
+      });
+
+      it('CampaignRegistered: bare-string enum tag is not misread as title', async () => {
+        await service.processEvent(
+          rawEvent(
+            'e-cr-bare',
+            ['CampaignRegistered', CAMPAIGN_ID],
+            [FARMER, 'CampaignRegistered', 1700000000n, 13],
+          ),
+        );
+        expect(prisma.campaign.upsert).toHaveBeenCalledWith(
+          expect.objectContaining({
+            create: expect.objectContaining({ farmer: FARMER, title: '' }),
+          }),
+        );
+      });
+
+      it('CampaignRegistered: array enum tag is not misread as title', async () => {
+        await service.processEvent(
+          rawEvent(
+            'e-cr-arr',
+            ['CampaignRegistered', CAMPAIGN_ID],
+            [FARMER, ['CampaignRegistered'], 1700000000n, 13],
+          ),
+        );
+        expect(prisma.campaign.upsert).toHaveBeenCalledWith(
+          expect.objectContaining({
+            create: expect.objectContaining({ farmer: FARMER, title: '' }),
+          }),
+        );
+      });
+
+      it('CampaignRegistered: object enum tag is not misread as title', async () => {
+        await service.processEvent(
+          rawEvent(
+            'e-cr-obj',
+            ['CampaignRegistered', CAMPAIGN_ID],
+            [FARMER, { tag: 'CampaignRegistered' }, 1700000000n, 13],
+          ),
+        );
+        expect(prisma.campaign.upsert).toHaveBeenCalledWith(
+          expect.objectContaining({
+            create: expect.objectContaining({ farmer: FARMER, title: '' }),
+          }),
+        );
+      });
+    });
   });
 
   describe('CampaignEscrowLinked', () => {
@@ -689,9 +781,12 @@ describe('EventParserService', () => {
   describe('broadcast-after-persist wiring', () => {
     it('emits a realtime event only after the DB write succeeds', async () => {
       const emitCampaignEvent = jest.fn();
-      const withRealtime = new EventParserService(prisma as any, {
-        emitCampaignEvent,
-      } as any);
+      const withRealtime = new EventParserService(
+        prisma as any,
+        {
+          emitCampaignEvent,
+        } as any,
+      );
 
       await withRealtime.processEvent(
         rawEvent(
@@ -713,9 +808,12 @@ describe('EventParserService', () => {
     it('does not emit for already-persisted (replayed) events', async () => {
       const emitCampaignEvent = jest.fn();
       prisma.transaction.findUnique.mockResolvedValueOnce({ id: 'e-rt2' });
-      const withRealtime = new EventParserService(prisma as any, {
-        emitCampaignEvent,
-      } as any);
+      const withRealtime = new EventParserService(
+        prisma as any,
+        {
+          emitCampaignEvent,
+        } as any,
+      );
 
       await withRealtime.processEvent(
         rawEvent(
@@ -730,9 +828,12 @@ describe('EventParserService', () => {
 
     it('does not emit when the parsed event has no campaignId', async () => {
       const emitCampaignEvent = jest.fn();
-      const withRealtime = new EventParserService(prisma as any, {
-        emitCampaignEvent,
-      } as any);
+      const withRealtime = new EventParserService(
+        prisma as any,
+        {
+          emitCampaignEvent,
+        } as any,
+      );
 
       await withRealtime.processEvent(
         rawEvent(
