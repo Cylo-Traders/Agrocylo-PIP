@@ -45,7 +45,7 @@ export default (): {
       .filter((origin) => origin.length > 0),
   },
   db: {
-    url: process.env.DATABASE_URL ?? 'file:./dev.db',
+    url: process.env.DATABASE_URL ?? '',
   },
   soroban: {
     rpcUrl:

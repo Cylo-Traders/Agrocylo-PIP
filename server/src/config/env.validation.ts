@@ -12,7 +12,9 @@ export const envValidationSchema = Joi.object({
   LOG_LEVEL: Joi.string()
     .valid('trace', 'debug', 'info', 'warn', 'error', 'fatal')
     .default('info'),
-  DATABASE_URL: Joi.string().default('file:./dev.db'),
+  DATABASE_URL: Joi.string()
+    .uri({ scheme: ['postgres', 'postgresql'] })
+    .required(),
   SOROBAN_RPC_URL: Joi.string()
     .uri()
     .default('https://soroban-testnet.stellar.org'),

@@ -1,6 +1,6 @@
 import { Global, Module, OnModuleDestroy } from '@nestjs/common';
 import { PrismaClient } from '../../generated/prisma/client';
-import { PrismaLibSql } from '@prisma/adapter-libsql';
+import { PrismaPg } from '@prisma/adapter-pg';
 
 @Global()
 @Module({
@@ -8,8 +8,11 @@ import { PrismaLibSql } from '@prisma/adapter-libsql';
     {
       provide: PrismaClient,
       useFactory: () => {
-        const url = process.env.DATABASE_URL || 'file:./dev.db';
-        const adapter = new PrismaLibSql({ url });
+        const connectionString = process.env.DATABASE_URL;
+        if (!connectionString) {
+          throw new Error('DATABASE_URL is not set');
+        }
+        const adapter = new PrismaPg({ connectionString });
         return new PrismaClient({ adapter });
       },
     },
