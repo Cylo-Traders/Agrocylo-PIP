@@ -1,100 +1,104 @@
 import React, { useState } from 'react';
+import { useParams } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { FundCampaignModal } from '../components/campaign/FundCampaignModal';
 import { StatusBadge } from '../components/campaign/StatusBadge';
 import { ActivityFeed } from '../components/campaign/ActivityFeed';
 import { useCampaignLiveUpdates } from '../hooks/useCampaignLiveUpdates';
+import { useCampaign } from '../hooks/contract/useEscrowQueries';
+import { contractQueryKeys } from '../hooks/contract/queryKeys';
 import { DetailPageSkeleton } from '../components/ui/Skeleton/Skeleton';
+import type { CampaignStatusTag } from '../lib/soroban/types';
 
-export interface CampaignData {
-  id: string;
-  title: string;
-  description: string;
-  totalTarget: number;
-  currentRaised: number;
-  status: 'Active' | 'Funding' | 'Resolved' | 'Failed' | 'Settled';
+function toDisplayAmount(value: bigint): number {
+  const asNumber = Number(value);
+  return Number.isFinite(asNumber) ? asNumber : 0;
 }
 
 export const CampaignDetailPage: React.FC = () => {
-  const [campaign, setCampaign] = useState<CampaignData | null>(null);
+  const { id } = useParams<{ id: string }>();
+  const queryClient = useQueryClient();
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  React.useEffect(() => {
-    const timer = window.setTimeout(() => {
-      setCampaign({
-        id: 'camp-101',
-        title: 'Organic Maize Irrigation & Harvesting PIP',
-        description:
-          'Scaling sustainable maize production across 250 hectares with automated precision drip irrigation and AI-powered yield monitoring.',
-        totalTarget: 50000,
-        currentRaised: 32500,
-        status: 'Funding',
-      });
-    }, 0);
-    return () => window.clearTimeout(timer);
-  }, []);
+  const { data: campaign, isLoading, isError, error } = useCampaign(id);
 
-  // Refreshes this page when another wallet's contribution changes funding
-  // progress; no-op (and no page breakage) if VITE_WS_URL isn't configured.
-  // Called unconditionally (before the loading early-return) per rules of
-  // hooks; the hook itself no-ops until a campaign id is available.
-  useCampaignLiveUpdates(campaign?.id);
+  useCampaignLiveUpdates(id);
 
-  if (!campaign) {
+  if (!id) {
     return (
-      <div className="max-w-4xl mx-auto p-6">
+      <div className="mx-auto max-w-4xl p-6">
+        <p className="text-soil-600">No campaign id in the URL.</p>
+      </div>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <div className="mx-auto max-w-4xl p-6">
         <DetailPageSkeleton />
       </div>
     );
   }
 
-  const percentage = Math.min(
-    100,
-    Math.round((campaign.currentRaised / campaign.totalTarget) * 100),
-  );
-
-  const handleFundingSuccess = (_res: unknown, addedAmount: number) => {
-    setCampaign((prev) =>
-      prev
-        ? {
-            ...prev,
-            currentRaised: prev.currentRaised + addedAmount,
-          }
-        : prev,
+  if (isError || !campaign) {
+    return (
+      <div className="mx-auto max-w-4xl p-6" role="alert">
+        <p className="text-status-failed-dark">
+          {error instanceof Error
+            ? error.message
+            : `Could not load campaign ${id}.`}
+        </p>
+      </div>
     );
+  }
+
+  const status = campaign.status.tag as CampaignStatusTag;
+  const totalTarget = toDisplayAmount(campaign.target_amount);
+  const currentRaised = toDisplayAmount(campaign.total_funded);
+  const percentage =
+    totalTarget > 0
+      ? Math.min(100, Math.round((currentRaised / totalTarget) * 100))
+      : 0;
+  const title = campaign.harvest_metadata || `Campaign ${id}`;
+
+  const handleFundingSuccess = () => {
+    void queryClient.invalidateQueries({
+      queryKey: contractQueryKeys.campaign(id),
+    });
   };
 
   return (
-    <div className="max-w-4xl mx-auto p-6 space-y-6">
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm">
+    <div className="mx-auto max-w-4xl space-y-6 p-6">
+      <div className="rounded-campaign border border-soil-200 bg-white p-6 shadow-campaign dark:border-soil-800 dark:bg-soil-900">
         <div className="flex items-center justify-between">
-          <StatusBadge status={campaign.status} />
-          <span className="text-sm font-mono text-slate-600 dark:text-slate-400">
-            ID: {campaign.id}
+          <StatusBadge status={status} />
+          <span className="font-mono text-sm text-soil-600 dark:text-soil-400">
+            ID: {id}
           </span>
         </div>
 
-        <h1 className="text-2xl font-bold text-slate-900 dark:text-white mt-3">
-          {campaign.title}
+        <h1 className="mt-3 text-2xl font-bold text-soil-900 dark:text-soil-50">
+          {title}
         </h1>
-        <p className="text-slate-600 dark:text-slate-300 mt-2">
-          {campaign.description}
+        <p className="mt-2 text-soil-600 dark:text-soil-300">
+          Farmer {campaign.farmer}
         </p>
 
         <div className="mt-6 space-y-2">
           <div className="flex justify-between text-sm">
-            <span className="font-semibold text-slate-900 dark:text-white">
-              ${campaign.currentRaised.toLocaleString()}{' '}
-              <span className="font-normal text-slate-600 dark:text-slate-400">
+            <span className="font-semibold text-soil-900 dark:text-soil-50">
+              ${currentRaised.toLocaleString()}{' '}
+              <span className="font-normal text-soil-600 dark:text-soil-400">
                 raised
               </span>
             </span>
-            <span className="font-medium text-slate-500">
-              Target: ${campaign.totalTarget.toLocaleString()} ({percentage}%)
+            <span className="font-medium text-soil-500">
+              Target: ${totalTarget.toLocaleString()} ({percentage}%)
             </span>
           </div>
 
           <div
-            className="h-3 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800"
+            className="h-3 w-full overflow-hidden rounded-full bg-soil-100 dark:bg-soil-800"
             role="progressbar"
             aria-valuenow={percentage}
             aria-valuemin={0}
@@ -102,18 +106,18 @@ export const CampaignDetailPage: React.FC = () => {
             aria-label={`Campaign funding progress: ${percentage}% of target raised`}
           >
             <div
-              className="h-full rounded-full bg-emerald-600 transition-all duration-500"
+              className="h-full rounded-full bg-leaf-600 transition-all duration-500"
               style={{ width: `${percentage}%` }}
             />
           </div>
         </div>
 
-        <div className="mt-6 flex justify-end border-t border-slate-100 pt-4 dark:border-slate-800">
+        <div className="mt-6 flex justify-end border-t border-soil-100 pt-4 dark:border-soil-800">
           <button
             type="button"
             onClick={() => setIsModalOpen(true)}
-            disabled={campaign.currentRaised >= campaign.totalTarget}
-            className="rounded-xl bg-emerald-700 px-6 py-3 font-semibold text-white shadow-md transition hover:bg-emerald-800 disabled:opacity-50"
+            disabled={currentRaised >= totalTarget}
+            className="rounded-xl bg-leaf-600 px-6 py-3 font-semibold text-white shadow-md transition hover:bg-leaf-700 disabled:opacity-50"
           >
             Fund this campaign
           </button>
@@ -123,16 +127,16 @@ export const CampaignDetailPage: React.FC = () => {
       <FundCampaignModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
-        campaignId={campaign.id}
-        campaignTitle={campaign.title}
-        totalTarget={campaign.totalTarget}
-        currentRaised={campaign.currentRaised}
+        campaignId={id}
+        campaignTitle={title}
+        totalTarget={totalTarget}
+        currentRaised={currentRaised}
         onSuccess={handleFundingSuccess}
       />
 
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm">
+      <div className="rounded-campaign border border-soil-200 bg-white p-6 shadow-campaign dark:border-soil-800 dark:bg-soil-900">
         <ActivityFeed
-          campaignId={BigInt(campaign.id.replace(/\D/g, '') || '0')}
+          campaignId={BigInt(id.replace(/\D/g, '') || '0')}
           pageSize={10}
           refreshIntervalMs={30_000}
         />
