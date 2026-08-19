@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { FundCampaignModal } from '../components/campaign/FundCampaignModal';
 import { StatusBadge } from '../components/campaign/StatusBadge';
 import { ActivityFeed } from '../components/campaign/ActivityFeed';
+import { OpenDisputeForm } from '../components/campaign/OpenDisputeForm';
 import { useCampaignLiveUpdates } from '../hooks/useCampaignLiveUpdates';
 import { DetailPageSkeleton } from '../components/ui/Skeleton/Skeleton';
 
@@ -12,6 +13,7 @@ export interface CampaignData {
   totalTarget: number;
   currentRaised: number;
   status: 'Active' | 'Funding' | 'Resolved' | 'Failed' | 'Settled';
+  farmer: string;
 }
 
 export const CampaignDetailPage: React.FC = () => {
@@ -28,6 +30,8 @@ export const CampaignDetailPage: React.FC = () => {
         totalTarget: 50000,
         currentRaised: 32500,
         status: 'Funding',
+        farmer:
+          'GDF4X5Y6Z7A8B9C0D1E2F3G4H5I6J7K8L9M0N1O2P3Q4R5S6T7U8V9W0X1Y2Z3',
       });
     }, 0);
     return () => window.clearTimeout(timer);
@@ -137,6 +141,11 @@ export const CampaignDetailPage: React.FC = () => {
           refreshIntervalMs={30_000}
         />
       </div>
+
+      <OpenDisputeForm
+        campaignId={campaign.id}
+        farmerAddress={campaign.farmer}
+      />
     </div>
   );
 };
