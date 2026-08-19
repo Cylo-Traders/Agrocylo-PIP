@@ -1,9 +1,18 @@
 import React, { useState } from 'react';
 import { FundCampaignModal } from '../components/campaign/FundCampaignModal';
+import { OpenDisputeModal } from '../components/campaign/OpenDisputeModal';
+import {
+  DisputeDetailsCard,
+  type DisputeSummary,
+} from '../components/campaign/DisputeDetailsCard';
 import { StatusBadge } from '../components/campaign/StatusBadge';
 import { ActivityFeed } from '../components/campaign/ActivityFeed';
 import { useCampaignLiveUpdates } from '../hooks/useCampaignLiveUpdates';
 import { DetailPageSkeleton } from '../components/ui/Skeleton/Skeleton';
+import { useWallet } from '../context/WalletContext';
+import { useContribution, useEscrowAdmin } from '../hooks/contract';
+import { evaluateDisputeEligibility } from '../lib/dispute/eligibility';
+import type { CampaignStatusTag } from '../lib/soroban/types';
 
 export interface CampaignData {
   id: string;
@@ -11,12 +20,18 @@ export interface CampaignData {
   description: string;
   totalTarget: number;
   currentRaised: number;
-  status: 'Active' | 'Funding' | 'Resolved' | 'Failed' | 'Settled';
+  status: CampaignStatusTag;
+  /** Campaign owner — one of the wallets authorized to open a dispute. */
+  farmer: string;
 }
 
 export const CampaignDetailPage: React.FC = () => {
   const [campaign, setCampaign] = useState<CampaignData | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isDisputeModalOpen, setIsDisputeModalOpen] = useState(false);
+  const [dispute, setDispute] = useState<DisputeSummary | null>(null);
+
+  const { publicKey } = useWallet();
 
   React.useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -28,6 +43,7 @@ export const CampaignDetailPage: React.FC = () => {
         totalTarget: 50000,
         currentRaised: 32500,
         status: 'Funding',
+        farmer: 'GDF4ZQK7XSLM2N6RJHVWPTYA3BCEUO5IQD8GLNXWMR9TKZVH2PJC4YSB',
       });
     }, 0);
     return () => window.clearTimeout(timer);
@@ -38,6 +54,22 @@ export const CampaignDetailPage: React.FC = () => {
   // Called unconditionally (before the loading early-return) per rules of
   // hooks; the hook itself no-ops until a campaign id is available.
   useCampaignLiveUpdates(campaign?.id);
+
+  // Eligibility inputs. Both hooks no-op until the escrow contract is
+  // configured, in which case the wallet simply isn't shown the button.
+  const { data: adminAddress } = useEscrowAdmin();
+  const { data: contribution } = useContribution(
+    campaign?.id,
+    publicKey ?? undefined,
+  );
+
+  const eligibility = evaluateDisputeEligibility({
+    status: campaign?.status,
+    walletAddress: publicKey,
+    farmer: campaign?.farmer,
+    admin: adminAddress,
+    contribution,
+  });
 
   if (!campaign) {
     return (
@@ -61,6 +93,18 @@ export const CampaignDetailPage: React.FC = () => {
           }
         : prev,
     );
+  };
+
+  // Reflect the new state immediately rather than waiting for the indexer:
+  // the contract has already accepted the dispute at this point.
+  const handleDisputeSuccess = (reason: string) => {
+    setCampaign((prev) => (prev ? { ...prev, status: 'Disputed' } : prev));
+    setDispute({
+      opener: publicKey!,
+      reason,
+      timestamp: Math.floor(Date.now() / 1000),
+      status: 'Open',
+    });
   };
 
   return (
@@ -108,7 +152,16 @@ export const CampaignDetailPage: React.FC = () => {
           </div>
         </div>
 
-        <div className="mt-6 flex justify-end border-t border-slate-100 pt-4 dark:border-slate-800">
+        <div className="mt-6 flex justify-end gap-3 border-t border-slate-100 pt-4 dark:border-slate-800">
+          {eligibility.eligible && (
+            <button
+              type="button"
+              onClick={() => setIsDisputeModalOpen(true)}
+              className="rounded-xl border border-red-300 px-6 py-3 font-semibold text-red-700 transition hover:bg-red-50 dark:border-red-800 dark:text-red-300 dark:hover:bg-red-950"
+            >
+              Open Dispute
+            </button>
+          )}
           <button
             type="button"
             onClick={() => setIsModalOpen(true)}
@@ -120,6 +173,8 @@ export const CampaignDetailPage: React.FC = () => {
         </div>
       </div>
 
+      {dispute && <DisputeDetailsCard dispute={dispute} />}
+
       <FundCampaignModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
@@ -129,6 +184,18 @@ export const CampaignDetailPage: React.FC = () => {
         currentRaised={campaign.currentRaised}
         onSuccess={handleFundingSuccess}
       />
+
+      {eligibility.eligible && publicKey && (
+        <OpenDisputeModal
+          isOpen={isDisputeModalOpen}
+          onClose={() => setIsDisputeModalOpen(false)}
+          campaignId={campaign.id}
+          campaignTitle={campaign.title}
+          opener={publicKey}
+          role={eligibility.role!}
+          onSuccess={handleDisputeSuccess}
+        />
+      )}
 
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm">
         <ActivityFeed
