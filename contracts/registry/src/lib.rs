@@ -113,6 +113,32 @@ impl RegistryContract {
     pub fn get_campaigns_by_farmer(env: Env, farmer: Address) -> Vec<u64> {
         campaign::get_campaigns_by_farmer(&env, &farmer)
     }
+
+    /// Total number of campaigns known to the registry. Use with
+    /// `get_campaign_ids` to page through every campaign.
+    pub fn get_campaign_count(env: Env) -> u64 {
+        campaign::get_campaign_count(&env)
+    }
+
+    /// Campaign ids in registration order for `[offset, offset + limit)`.
+    ///
+    /// This is the supported way to enumerate campaigns — it does not depend
+    /// on RPC event retention the way event-log scanning does. `limit` is
+    /// clamped to 100; an `offset` at or past the end returns an empty vector.
+    pub fn get_campaign_ids(env: Env, offset: u64, limit: u32) -> Vec<u64> {
+        campaign::get_campaign_ids(&env, offset, limit)
+    }
+
+    /// Total number of registered farmers.
+    pub fn get_farmer_count(env: Env) -> u64 {
+        farmer::get_farmer_count(&env)
+    }
+
+    /// Farmer addresses in registration order, with the same paging and
+    /// clamping rules as `get_campaign_ids`.
+    pub fn get_farmers(env: Env, offset: u64, limit: u32) -> Vec<Address> {
+        farmer::get_farmers(&env, offset, limit)
+    }
 }
 
 #[cfg(test)]

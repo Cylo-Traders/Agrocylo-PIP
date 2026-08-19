@@ -24,6 +24,7 @@ pub fn register_campaign(
     };
 
     storage::set_campaign(env, &campaign);
+    storage::index_campaign(env, campaign_id);
     storage::extend_instance_ttl(env);
 
     events::campaign_registered(env, campaign_id, farmer, title);
@@ -66,6 +67,9 @@ pub fn link_campaign_escrow(
     };
     storage::set_campaign_record(env, campaign_id, &record);
     storage::add_farmer_campaign(env, farmer, campaign_id);
+    // A campaign can be linked without ever going through `register_campaign`,
+    // so index here too; `index_campaign` is idempotent.
+    storage::index_campaign(env, campaign_id);
     storage::extend_instance_ttl(env);
 
     events::campaign_escrow_linked(env, campaign_id, farmer.clone(), escrow_contract.clone());
@@ -100,4 +104,12 @@ pub fn get_campaign_record(env: &Env, campaign_id: u64) -> CampaignRecord {
 
 pub fn get_campaigns_by_farmer(env: &Env, farmer: &Address) -> Vec<u64> {
     storage::get_farmer_campaigns(env, farmer)
+}
+
+pub fn get_campaign_count(env: &Env) -> u64 {
+    storage::get_campaign_count(env)
+}
+
+pub fn get_campaign_ids(env: &Env, offset: u64, limit: u32) -> Vec<u64> {
+    storage::get_campaign_ids(env, offset, limit)
 }

@@ -774,3 +774,210 @@ fn test_get_campaigns_by_farmer_empty() {
     let campaigns = client.get_campaigns_by_farmer(&user);
     assert_eq!(campaigns.len(), 0);
 }
+
+// ---------------------------------------------------------------------------
+// Enumeration: counts and paginated listing (issue #151)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_counts_start_at_zero() {
+    let (_env, admin, _, _, client) = create_test_env();
+    client.initialize(&admin);
+
+    assert_eq!(client.get_campaign_count(), 0u64);
+    assert_eq!(client.get_farmer_count(), 0u64);
+}
+
+#[test]
+fn test_campaign_count_after_multiple_registrations() {
+    let (env, admin, user, _, client) = create_test_env();
+    client.initialize(&admin);
+
+    for id in 1u64..=5u64 {
+        client.register_campaign(
+            &id,
+            &user,
+            &String::from_str(&env, "Title"),
+            &String::from_str(&env, "Description"),
+        );
+    }
+
+    assert_eq!(client.get_campaign_count(), 5u64);
+}
+
+#[test]
+fn test_farmer_count_after_multiple_registrations() {
+    let (env, admin, _, _, client) = create_test_env();
+    client.initialize(&admin);
+
+    for _ in 0..3 {
+        let farmer = Address::generate(&env);
+        client.register_farmer(
+            &farmer,
+            &String::from_str(&env, "Name"),
+            &String::from_str(&env, "Location"),
+        );
+    }
+
+    assert_eq!(client.get_farmer_count(), 3u64);
+}
+
+#[test]
+fn test_get_campaign_ids_returns_registration_order() {
+    let (env, admin, user, _, client) = create_test_env();
+    client.initialize(&admin);
+
+    for id in [10u64, 20u64, 30u64] {
+        client.register_campaign(
+            &id,
+            &user,
+            &String::from_str(&env, "Title"),
+            &String::from_str(&env, "Description"),
+        );
+    }
+
+    let ids = client.get_campaign_ids(&0u64, &10u32);
+    assert_eq!(ids.len(), 3);
+    assert_eq!(ids.get(0).unwrap(), 10u64);
+    assert_eq!(ids.get(1).unwrap(), 20u64);
+    assert_eq!(ids.get(2).unwrap(), 30u64);
+}
+
+#[test]
+fn test_get_campaign_ids_pagination_covers_every_id_exactly_once() {
+    let (env, admin, user, _, client) = create_test_env();
+    client.initialize(&admin);
+
+    for id in 1u64..=7u64 {
+        client.register_campaign(
+            &id,
+            &user,
+            &String::from_str(&env, "Title"),
+            &String::from_str(&env, "Description"),
+        );
+    }
+
+    let page_1 = client.get_campaign_ids(&0u64, &3u32);
+    let page_2 = client.get_campaign_ids(&3u64, &3u32);
+    let page_3 = client.get_campaign_ids(&6u64, &3u32);
+
+    assert_eq!(page_1.len(), 3);
+    assert_eq!(page_2.len(), 3);
+    // Final page is short — only one id remains.
+    assert_eq!(page_3.len(), 1);
+
+    let mut seen = vec![&env];
+    for page in [page_1, page_2, page_3] {
+        for id in page.iter() {
+            seen.push_back(id);
+        }
+    }
+    assert_eq!(seen.len(), 7);
+    for id in 1u64..=7u64 {
+        assert!(seen.contains(&id));
+    }
+}
+
+#[test]
+fn test_get_campaign_ids_offset_past_end_is_empty() {
+    let (env, admin, user, _, client) = create_test_env();
+    client.initialize(&admin);
+
+    client.register_campaign(
+        &1u64,
+        &user,
+        &String::from_str(&env, "Title"),
+        &String::from_str(&env, "Description"),
+    );
+
+    assert_eq!(client.get_campaign_ids(&5u64, &10u32).len(), 0);
+    assert_eq!(client.get_campaign_ids(&1u64, &10u32).len(), 0);
+}
+
+#[test]
+fn test_get_campaign_ids_limit_is_clamped() {
+    let (env, admin, user, _, client) = create_test_env();
+    client.initialize(&admin);
+
+    for id in 1u64..=3u64 {
+        client.register_campaign(
+            &id,
+            &user,
+            &String::from_str(&env, "Title"),
+            &String::from_str(&env, "Description"),
+        );
+    }
+
+    // A limit far above MAX_PAGE_LIMIT still returns only what exists.
+    let ids = client.get_campaign_ids(&0u64, &10_000u32);
+    assert_eq!(ids.len(), 3);
+}
+
+#[test]
+fn test_get_campaign_ids_empty_registry() {
+    let (_env, admin, _, _, client) = create_test_env();
+    client.initialize(&admin);
+
+    assert_eq!(client.get_campaign_ids(&0u64, &10u32).len(), 0);
+}
+
+#[test]
+fn test_link_campaign_escrow_indexes_campaign() {
+    let (env, admin, user, escrow, client) = create_test_env();
+    client.initialize(&admin);
+
+    // A campaign that was never passed to register_campaign is still
+    // enumerable once it is linked.
+    let crop = Symbol::new(&env, "coffee");
+    let region = Symbol::new(&env, "highlands");
+    client.link_campaign_escrow(&42u64, &user, &escrow, &crop, &region);
+
+    assert_eq!(client.get_campaign_count(), 1u64);
+    let ids = client.get_campaign_ids(&0u64, &10u32);
+    assert_eq!(ids.get(0).unwrap(), 42u64);
+}
+
+#[test]
+fn test_register_then_link_counts_campaign_once() {
+    let (env, admin, user, escrow, client) = create_test_env();
+    client.initialize(&admin);
+
+    client.register_campaign(
+        &7u64,
+        &user,
+        &String::from_str(&env, "Title"),
+        &String::from_str(&env, "Description"),
+    );
+    let crop = Symbol::new(&env, "coffee");
+    let region = Symbol::new(&env, "highlands");
+    client.link_campaign_escrow(&7u64, &user, &escrow, &crop, &region);
+
+    assert_eq!(client.get_campaign_count(), 1u64);
+    assert_eq!(client.get_campaign_ids(&0u64, &10u32).len(), 1);
+}
+
+#[test]
+fn test_get_farmers_pagination() {
+    let (env, admin, _, _, client) = create_test_env();
+    client.initialize(&admin);
+
+    let mut registered = vec![&env];
+    for _ in 0..4 {
+        let farmer = Address::generate(&env);
+        client.register_farmer(
+            &farmer,
+            &String::from_str(&env, "Name"),
+            &String::from_str(&env, "Location"),
+        );
+        registered.push_back(farmer);
+    }
+
+    let page_1 = client.get_farmers(&0u64, &2u32);
+    let page_2 = client.get_farmers(&2u64, &2u32);
+    assert_eq!(page_1.len(), 2);
+    assert_eq!(page_2.len(), 2);
+
+    assert_eq!(page_1.get(0).unwrap(), registered.get(0).unwrap());
+    assert_eq!(page_2.get(1).unwrap(), registered.get(3).unwrap());
+    assert_eq!(client.get_farmers(&4u64, &2u32).len(), 0);
+}

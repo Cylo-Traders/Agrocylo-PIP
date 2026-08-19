@@ -125,6 +125,45 @@ The table below shows the expected cross-contract calls. After each escrow actio
 
 > **Prerequisite:** The `ProductionEscrowContract` address must be `approve_contract`'d in the `RegistryContract` so that activity recording can proceed without requiring per-transaction user authorization inside the registry.
 
+## Campaign & Farmer Discovery
+
+**Use the registry's on-chain enumeration, not event-log scanning.**
+
+The `RegistryContract` is the source of truth for which campaigns and farmers exist. To answer "what campaigns exist?", page through the registry directly:
+
+```
+let total = registry.get_campaign_count();          // -> u64
+
+let mut offset = 0u64;
+while offset < total {
+    let ids = registry.get_campaign_ids(offset, 100); // -> Vec<u64>
+    // ... fetch get_campaign / get_campaign_record per id
+    offset += ids.len() as u64;
+}
+```
+
+Farmers enumerate the same way via `get_farmer_count()` and `get_farmers(offset, limit)`.
+
+| Method | Returns | Notes |
+|---|---|---|
+| `get_campaign_count()` | `u64` | Total campaigns known to the registry |
+| `get_campaign_ids(offset, limit)` | `Vec<u64>` | Registration order; `limit` clamped to 100 |
+| `get_farmer_count()` | `u64` | Total registered farmers |
+| `get_farmers(offset, limit)` | `Vec<Address>` | Registration order; `limit` clamped to 100 |
+
+Semantics:
+
+- Ids are returned in **registration order** and indices are stable — an id keeps its index for the life of the contract.
+- An `offset` at or past `get_campaign_count()` returns an **empty vector**, which is the termination signal when paging.
+- A `limit` above 100 is clamped rather than rejected, so a short page does **not** by itself mean the end of the list — compare `offset` against the count.
+- A campaign is counted **once**, whether it enters via `register_campaign`, `link_campaign_escrow`, or both.
+
+### Why not event scanning
+
+Scanning `ProductionEscrowContract` event history for `CampaignCreated` within a bounded lookback window (as `client/src/hooks/useAdminCampaigns.ts` previously did) is unreliable: campaigns created before the lookback window — or before whatever history the configured RPC provider retains — silently disappear from the results. RPC providers expire event history; registry state does not. Any view that must be **complete** (admin dashboards, analytics, backfills) should use the enumeration methods above.
+
+Event streams remain the right tool for *incremental* updates — reacting to changes since the last processed ledger. Use enumeration for the full set, events for the delta.
+
 ## Event Indexing Responsibilities
 
 Backend indexers should consume events from **both** contracts. The recommended approach is:
@@ -328,6 +367,11 @@ Investor 2
 - `is_contract_approved(env: Env, contract: Address) -> bool`
 - `record_activity(env: Env, campaign_id: u64, actor: Address, action_type: ActivityAction)`
 - `get_campaign_activities(env: Env, campaign_id: u64) -> Vec<ActivityRecord>`
+- `get_campaigns_by_farmer(env: Env, farmer: Address) -> Vec<u64>`
+- `get_campaign_count(env: Env) -> u64`
+- `get_campaign_ids(env: Env, offset: u64, limit: u32) -> Vec<u64>`
+- `get_farmer_count(env: Env) -> u64`
+- `get_farmers(env: Env, offset: u64, limit: u32) -> Vec<Address>`
 
 ## Acceptance Criteria Checklist
 
