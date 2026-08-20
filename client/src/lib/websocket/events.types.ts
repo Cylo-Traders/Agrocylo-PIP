@@ -9,6 +9,7 @@
 export type CampaignEventType =
   | 'campaign.escrow_created'
   | 'campaign.invested'
+  | 'campaign.contrib_reconciled'
   | 'campaign.funded'
   | 'campaign.tranches_configured'
   | 'campaign.tranche_released'

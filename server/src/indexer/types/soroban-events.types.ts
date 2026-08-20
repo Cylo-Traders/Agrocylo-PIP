@@ -55,6 +55,13 @@ export interface CampaignInvestedData {
   timestamp: number;
 }
 
+export interface ContribReconciledData {
+  campaignId: string;
+  investor: string;
+  amount: string;
+  timestamp: number;
+}
+
 export interface CampaignFundedData {
   campaignId: string;
   timestamp: number;
@@ -201,6 +208,7 @@ export interface ActivityRecordedData {
 export type ParsedEventData =
   | CampaignEscrowCreatedData
   | CampaignInvestedData
+  | ContribReconciledData
   | CampaignFundedData
   | TranchesConfiguredData
   | TrancheReleasedData

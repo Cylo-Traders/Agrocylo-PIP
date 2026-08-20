@@ -181,6 +181,68 @@ describe('EventParserService', () => {
     });
   });
 
+  describe('ContribReconciled', () => {
+    it('persists as a distinctly-tagged audit transaction without mutating totalFunded', async () => {
+      await service.processEvent(
+        rawEvent(
+          'e-cr1',
+          ['ContribReconciled', CAMPAIGN_ID],
+          [INVESTOR, 1700000000n, 250n],
+        ),
+      );
+
+      expect(prisma.user.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { address: INVESTOR } }),
+      );
+      expect(prisma.transaction.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            id: 'e-cr1',
+            type: 'campaign.contrib_reconciled',
+            amount: 250n,
+          }),
+        }),
+      );
+      // Reconciliation is bookkeeping-only; no Investment row and no totalFunded increment.
+      expect(prisma.investment.create).not.toHaveBeenCalled();
+      expect(prisma.campaign.update).not.toHaveBeenCalled();
+    });
+
+    it('broadcasts a distinguishable realtime event', async () => {
+      const emitCampaignEvent = jest.fn();
+      const withRealtime = new EventParserService(
+        prisma as any,
+        {
+          emitCampaignEvent,
+        } as any,
+      );
+
+      await withRealtime.processEvent(
+        rawEvent(
+          'e-cr-rt1',
+          ['ContribReconciled', CAMPAIGN_ID],
+          [INVESTOR, 1700000000n, 250n],
+        ),
+      );
+
+      expect(prisma.transaction.create).toHaveBeenCalled();
+      expect(emitCampaignEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'campaign.contrib_reconciled',
+          campaignId: '123',
+        }),
+      );
+    });
+
+    it('logs and skips a malformed payload', async () => {
+      await service.processEvent(
+        rawEvent('e-cr-bad', ['ContribReconciled', CAMPAIGN_ID], [INVESTOR]),
+      );
+      expect(errorSpy).toHaveBeenCalled();
+      expect(prisma.transaction.create).not.toHaveBeenCalled();
+    });
+  });
+
   describe('CampaignFunded', () => {
     it('marks the campaign Funded with the authoritative total', async () => {
       await service.processEvent(
@@ -736,9 +798,12 @@ describe('EventParserService', () => {
   describe('broadcast-after-persist wiring', () => {
     it('emits a realtime event only after the DB write succeeds', async () => {
       const emitCampaignEvent = jest.fn();
-      const withRealtime = new EventParserService(prisma as any, {
-        emitCampaignEvent,
-      } as any);
+      const withRealtime = new EventParserService(
+        prisma as any,
+        {
+          emitCampaignEvent,
+        } as any,
+      );
 
       await withRealtime.processEvent(
         rawEvent(
@@ -760,9 +825,12 @@ describe('EventParserService', () => {
     it('does not emit for already-persisted (replayed) events', async () => {
       const emitCampaignEvent = jest.fn();
       prisma.transaction.findUnique.mockResolvedValueOnce({ id: 'e-rt2' });
-      const withRealtime = new EventParserService(prisma as any, {
-        emitCampaignEvent,
-      } as any);
+      const withRealtime = new EventParserService(
+        prisma as any,
+        {
+          emitCampaignEvent,
+        } as any,
+      );
 
       await withRealtime.processEvent(
         rawEvent(
@@ -777,9 +845,12 @@ describe('EventParserService', () => {
 
     it('does not emit when the parsed event has no campaignId', async () => {
       const emitCampaignEvent = jest.fn();
-      const withRealtime = new EventParserService(prisma as any, {
-        emitCampaignEvent,
-      } as any);
+      const withRealtime = new EventParserService(
+        prisma as any,
+        {
+          emitCampaignEvent,
+        } as any,
+      );
 
       await withRealtime.processEvent(
         rawEvent(

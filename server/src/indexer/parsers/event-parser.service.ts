@@ -7,6 +7,7 @@ import type {
   ParsedEvent,
   CampaignEscrowCreatedData,
   CampaignInvestedData,
+  ContribReconciledData,
   CampaignFundedData,
   TranchesConfiguredData,
   TrancheReleasedData,
@@ -151,6 +152,8 @@ export class EventParserService {
         return this.parseCampaignEscrowCreated(raw, topics, arr);
       case 'ContribReceived':
         return this.parseCampaignInvested(raw, topics, arr);
+      case 'ContribReconciled':
+        return this.parseContribReconciled(raw, topics, arr);
       case 'CampaignFunded':
         return this.parseCampaignFunded(raw, topics, arr);
       case 'TranchesConfigured':
@@ -272,6 +275,40 @@ export class EventParserService {
       raw,
       topics,
       'campaign.invested',
+      data as unknown as Record<string, unknown>,
+      {
+        campaignId,
+        userAddress: investor,
+        amount,
+      },
+    );
+  }
+
+  private parseContribReconciled(
+    raw: RawSorobanEvent,
+    topics: unknown[],
+    arr: unknown[],
+  ): ParsedEvent {
+    if (arr.length < 3)
+      throw new Error('ContribReconciled payload must have 3 elements');
+    const campaignId = asString(topics[1], 'campaignId');
+    const investor = asString(arr[0], 'investor');
+    const timestamp = asNumber(arr[1], 'timestamp');
+    const amount = asBigInt(arr[2], 'amount');
+    const data: ContribReconciledData = {
+      campaignId,
+      investor,
+      amount: amount.toString(),
+      timestamp,
+    };
+    // Tagged distinctly from 'campaign.invested' so it's never conflated with
+    // genuine on-chain deposits downstream. The indexer records this as an
+    // audit-only event (no totalFunded increment) because it represents a
+    // privileged bookkeeping reconciliation, not a real token transfer.
+    return this.buildEvent(
+      raw,
+      topics,
+      'campaign.contrib_reconciled',
       data as unknown as Record<string, unknown>,
       {
         campaignId,
@@ -888,6 +925,9 @@ export class EventParserService {
       case 'campaign.invested':
         await this.handleCampaignInvested(parsed);
         break;
+      case 'campaign.contrib_reconciled':
+        await this.handleContribReconciled(parsed);
+        break;
       case 'campaign.funded':
         await this.handleCampaignFunded(parsed);
         break;
@@ -1020,6 +1060,25 @@ export class EventParserService {
     this.logger.log(
       { campaignId, investor: data.investor, amount: data.amount },
       'Investment recorded',
+    );
+  }
+
+  private async handleContribReconciled(parsed: ParsedEvent): Promise<void> {
+    const data = parsed.data as unknown as ContribReconciledData;
+    await this.ensureUser(data.investor, data.timestamp);
+    // Reconciliation is a privileged bookkeeping path that increases the
+    // on-chain total_funded without a real token transfer. The indexer
+    // intentionally records this as a distinctly-tagged audit Transaction row
+    // (created generically in persistEvent) without incrementing
+    // Campaign.totalFunded, so the authoritative funded amount remains driven
+    // by ContribReceived/CampaignFunded events.
+    this.logger.log(
+      {
+        campaignId: data.campaignId,
+        investor: data.investor,
+        amount: data.amount,
+      },
+      'Contribution reconciled (audit-only)',
     );
   }
 
