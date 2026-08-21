@@ -12,7 +12,8 @@
     "format": "prettier --write \"*.{ts,tsx,js,cjs,mjs,json,css}\" \"src/**/*.{ts,tsx,css,json}\"",
     "format:check": "prettier --check \"*.{ts,tsx,js,cjs,mjs,json,css}\" \"src/**/*.{ts,tsx,css,json}\"",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "prepare": "husky"
   },
   "lint-staged": {
     "*.{ts,tsx}": [
