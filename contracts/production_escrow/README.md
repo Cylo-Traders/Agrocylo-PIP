@@ -9,24 +9,26 @@ The `ProductionEscrowContract` manages the lifecycle of agricultural production 
 ### Campaign Lifecycle
 
 ```
-Funding -> Funded -> InProduction -> Harvested -> Settled
+Active -> Funding -> Funded -> InProduction -> Harvested -> Settled
 ```
 
-Alternative terminal states:
-- `Failed`
-- `Disputed`
+Alternative lifecycle and terminal paths:
+- `Active` / `Funding` / `Funded` / `InProduction` -> `Disputed` -> `Resolved` (funds disbursed according to dispute resolution)
+- `Active` / `Funding` / `Funded` / `InProduction` -> `Failed` (campaign aborted or cancelled, refunds processed)
 
 ### Campaign Statuses
 
-| Status        | Description                                      |
-|---------------|--------------------------------------------------|
-| `Funding`     | Campaign created, accepting investor funds       |
-| `Funded`      | Minimum funding goal reached                     |
-| `InProduction`| Production phase started                         |
-| `Harvested`   | Farmer reported harvest completion               |
-| `Settled`     | Funds distributed according to campaign rules    |
-| `Failed`      | Campaign failed, refunds processed               |
-| `Disputed`    | Dispute initiated, awaiting resolution           |
+| Status        | Description                                                           |
+|---------------|-----------------------------------------------------------------------|
+| `Active`      | Campaign created, awaiting initial contribution                       |
+| `Funding`     | Campaign created, accepting investor funds                            |
+| `Funded`      | Minimum funding goal reached                                          |
+| `InProduction`| Production phase started (first tranche released)                     |
+| `Harvested`   | Farmer reported harvest completion                                    |
+| `Disputed`    | Dispute initiated, awaiting admin resolution                          |
+| `Resolved`    | Dispute resolved by admin, settlement/refunds executable              |
+| `Settled`     | Funds distributed according to campaign rules                         |
+| `Failed`      | Campaign marked as failed, investor refunds processed                 |
 
 ## Public Methods
 
