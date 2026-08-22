@@ -1057,6 +1057,14 @@ export class EventParserService {
         txHash: parsed.txHash,
       },
     });
+    // The first tranche release transitions the campaign from Funded into
+    // InProduction (mirroring the escrow contract's own state machine). The
+    // conditional `where` (id + current status) makes repeated releases on an
+    // already-InProduction campaign a no-op instead of an unnecessary write.
+    await this.prisma.campaign.updateMany({
+      where: { id: data.campaignId, status: 'Funded' },
+      data: { status: 'InProduction' },
+    });
     this.logger.log(
       { campaignId: data.campaignId, recipient: data.recipient },
       'Tranche released',
