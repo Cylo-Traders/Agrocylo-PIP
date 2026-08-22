@@ -1,45 +1,20 @@
 import React, { useState } from 'react';
+import { useParams } from 'react-router-dom';
 import { FundCampaignModal } from '../components/campaign/FundCampaignModal';
 import { StatusBadge } from '../components/campaign/StatusBadge';
 import { ActivityFeed } from '../components/campaign/ActivityFeed';
 import { useCampaignLiveUpdates } from '../hooks/useCampaignLiveUpdates';
 import { DetailPageSkeleton } from '../components/ui/Skeleton/Skeleton';
-
-export interface CampaignData {
-  id: string;
-  title: string;
-  description: string;
-  totalTarget: number;
-  currentRaised: number;
-  status: 'Active' | 'Funding' | 'Resolved' | 'Failed' | 'Settled';
-}
+import { useCampaign } from '../hooks/contract/useEscrowQueries';
 
 export const CampaignDetailPage: React.FC = () => {
-  const [campaign, setCampaign] = useState<CampaignData | null>(null);
+  const { id } = useParams<{ id: string }>();
+  const { data: campaign, isLoading } = useCampaign(id);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  React.useEffect(() => {
-    const timer = window.setTimeout(() => {
-      setCampaign({
-        id: 'camp-101',
-        title: 'Organic Maize Irrigation & Harvesting PIP',
-        description:
-          'Scaling sustainable maize production across 250 hectares with automated precision drip irrigation and AI-powered yield monitoring.',
-        totalTarget: 50000,
-        currentRaised: 32500,
-        status: 'Funding',
-      });
-    }, 0);
-    return () => window.clearTimeout(timer);
-  }, []);
+  useCampaignLiveUpdates(id);
 
-  // Refreshes this page when another wallet's contribution changes funding
-  // progress; no-op (and no page breakage) if VITE_WS_URL isn't configured.
-  // Called unconditionally (before the loading early-return) per rules of
-  // hooks; the hook itself no-ops until a campaign id is available.
-  useCampaignLiveUpdates(campaign?.id);
-
-  if (!campaign) {
+  if (isLoading || !campaign) {
     return (
       <div className="max-w-4xl mx-auto p-6">
         <DetailPageSkeleton />
@@ -47,49 +22,42 @@ export const CampaignDetailPage: React.FC = () => {
     );
   }
 
+  const totalTarget = Number(campaign.target_amount) / 1e7;
+  const currentRaised = Number(campaign.total_funded) / 1e7;
+  const status = campaign.status.tag;
+
   const percentage = Math.min(
     100,
-    Math.round((campaign.currentRaised / campaign.totalTarget) * 100),
+    totalTarget > 0 ? Math.round((currentRaised / totalTarget) * 100) : 0,
   );
-
-  const handleFundingSuccess = (_res: unknown, addedAmount: number) => {
-    setCampaign((prev) =>
-      prev
-        ? {
-            ...prev,
-            currentRaised: prev.currentRaised + addedAmount,
-          }
-        : prev,
-    );
-  };
 
   return (
     <div className="max-w-4xl mx-auto p-6 space-y-6">
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm">
         <div className="flex items-center justify-between">
-          <StatusBadge status={campaign.status} />
+          <StatusBadge status={status as any} />
           <span className="text-sm font-mono text-slate-600 dark:text-slate-400">
-            ID: {campaign.id}
+            ID: {id}
           </span>
         </div>
 
         <h1 className="text-2xl font-bold text-slate-900 dark:text-white mt-3">
-          {campaign.title}
+          Campaign {id}
         </h1>
         <p className="text-slate-600 dark:text-slate-300 mt-2">
-          {campaign.description}
+          On-chain campaign details.
         </p>
 
         <div className="mt-6 space-y-2">
           <div className="flex justify-between text-sm">
             <span className="font-semibold text-slate-900 dark:text-white">
-              ${campaign.currentRaised.toLocaleString()}{' '}
+              ${currentRaised.toLocaleString()}{' '}
               <span className="font-normal text-slate-600 dark:text-slate-400">
                 raised
               </span>
             </span>
             <span className="font-medium text-slate-500">
-              Target: ${campaign.totalTarget.toLocaleString()} ({percentage}%)
+              Target: ${totalTarget.toLocaleString()} ({percentage}%)
             </span>
           </div>
 
@@ -112,7 +80,7 @@ export const CampaignDetailPage: React.FC = () => {
           <button
             type="button"
             onClick={() => setIsModalOpen(true)}
-            disabled={campaign.currentRaised >= campaign.totalTarget}
+            disabled={currentRaised >= totalTarget}
             className="rounded-xl bg-emerald-700 px-6 py-3 font-semibold text-white shadow-md transition hover:bg-emerald-800 disabled:opacity-50"
           >
             Fund this campaign
@@ -123,16 +91,16 @@ export const CampaignDetailPage: React.FC = () => {
       <FundCampaignModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
-        campaignId={campaign.id}
-        campaignTitle={campaign.title}
-        totalTarget={campaign.totalTarget}
-        currentRaised={campaign.currentRaised}
-        onSuccess={handleFundingSuccess}
+        campaignId={id!}
+        campaignTitle={`Campaign ${id}`}
+        totalTarget={totalTarget}
+        currentRaised={currentRaised}
+        onSuccess={() => {}}
       />
 
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm">
         <ActivityFeed
-          campaignId={BigInt(campaign.id.replace(/\D/g, '') || '0')}
+          campaignId={BigInt(id?.replace(/\D/g, '') || '0')}
           pageSize={10}
           refreshIntervalMs={30_000}
         />
