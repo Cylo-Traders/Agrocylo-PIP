@@ -7,6 +7,14 @@ import { AnalyticsDashboardPage } from './pages/AnalyticsDashboardPage';
 import { AdminDashboardPage } from './pages/AdminDashboardPage';
 import { ActivityFeedPage } from './pages/ActivityFeedPage';
 import { CampaignDetailPage } from './pages/CampaignDetailPage';
+import { CreateCampaignPage } from './pages/CreateCampaignPage';
+import { InvestorDashboardPage } from './pages/InvestorDashboardPage';
+import {
+  CampaignsPage,
+  FarmerDashboardPage,
+  ProfilePage,
+  NotFoundPage,
+} from './pages';
 import './App.css';
 
 export default function App() {
@@ -49,10 +57,19 @@ export default function App() {
       <Route path="/admin" element={<AdminDashboardPage />} />
       <Route path="/dev/components" element={<Playground />} />
 
-      {/* AppLayout routes */}
+      {/* AppLayout routes. HomePage from pages/index is intentionally unrouted; `/` stays DesignFoundationsPage. */}
       <Route element={<AppLayout />}>
         <Route path="/activity" element={<ActivityFeedPage />} />
+        <Route path="/campaigns" element={<CampaignsPage />} />
+        <Route path="/campaigns/new" element={<CreateCampaignPage />} />
         <Route path="/campaigns/:id" element={<CampaignDetailPage />} />
+        <Route path="/investor" element={<InvestorDashboardPage />} />
+        <Route path="/farmer" element={<FarmerDashboardPage />} />
+        <Route path="/profile" element={<ProfilePage />} />
+        <Route path="/dashboard/investor" element={<InvestorDashboardPage />} />
+        <Route path="/dashboard/farmer" element={<FarmerDashboardPage />} />
+        <Route path="/dashboard/admin" element={<AdminDashboardPage />} />
+        <Route path="*" element={<NotFoundPage />} />
       </Route>
     </Routes>
   );
