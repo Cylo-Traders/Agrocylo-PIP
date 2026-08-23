@@ -4,9 +4,10 @@ import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 const navigation = [
   { label: 'Home', to: '/', end: true },
   { label: 'Campaigns', to: '/campaigns' },
-  { label: 'Farmer', to: '/dashboard/farmer' },
-  { label: 'Investor', to: '/dashboard/investor' },
-  { label: 'Admin', to: '/dashboard/admin' },
+  { label: 'New campaign', to: '/campaigns/new' },
+  { label: 'Farmer', to: '/farmer' },
+  { label: 'Investor', to: '/investor' },
+  { label: 'Admin', to: '/admin' },
   { label: 'Activity', to: '/activity' },
   { label: 'Profile', to: '/profile' },
 ];
