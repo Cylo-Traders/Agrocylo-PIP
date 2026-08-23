@@ -13,7 +13,7 @@ import { DashboardRowsSkeleton } from '../components/ui/Skeleton/Skeleton';
 export const InvestorDashboardPage: React.FC = () => {
   const { isConnected, publicKey } = useWallet();
   const { data: investments, isLoading } = useInvestorPortfolio(
-    isConnected ? publicKey ?? undefined : undefined,
+    isConnected ? (publicKey ?? undefined) : undefined,
   );
 
   const claimRefundMutation = useClaimRefund();
@@ -77,7 +77,8 @@ export const InvestorDashboardPage: React.FC = () => {
             Connect Your Wallet
           </h2>
           <p className="text-sm text-slate-600 dark:text-slate-400 max-w-md mx-auto">
-            Connect your Soroban-compatible wallet to view your active investments, claimable returns, and refund balances.
+            Connect your Soroban-compatible wallet to view your active
+            investments, claimable returns, and refund balances.
           </p>
         </div>
       ) : isLoading ? (

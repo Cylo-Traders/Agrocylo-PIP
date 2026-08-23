@@ -59,7 +59,9 @@ describe('InvestorDashboardPage', () => {
     ).mockReturnValue({
       data: undefined,
       isLoading: false,
-    } as unknown as ReturnType<typeof useInvestorPortfolioModule.useInvestorPortfolio>);
+    } as unknown as ReturnType<
+      typeof useInvestorPortfolioModule.useInvestorPortfolio
+    >);
 
     renderPage();
 
@@ -90,7 +92,9 @@ describe('InvestorDashboardPage', () => {
         },
       ],
       isLoading: false,
-    } as unknown as ReturnType<typeof useInvestorPortfolioModule.useInvestorPortfolio>);
+    } as unknown as ReturnType<
+      typeof useInvestorPortfolioModule.useInvestorPortfolio
+    >);
 
     renderPage();
 
