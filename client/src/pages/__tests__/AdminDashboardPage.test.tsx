@@ -22,6 +22,8 @@ vi.mock('../../hooks/contract', () => ({
   useResolveDispute: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useSettleCampaign: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useMarkFailed: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useDispute: () => ({ data: undefined, isLoading: false }),
+  useTranches: () => ({ data: [], isLoading: false }),
 }));
 
 const mockUseAdminCampaigns = vi.fn();
@@ -118,5 +120,52 @@ describe('AdminDashboardPage admin gating', () => {
     expect(
       screen.getByRole('button', { name: /mark campaign as failed/i }),
     ).toBeInTheDocument();
+  });
+
+  it('shows open dispute queue for Disputed campaigns and hides it when none', () => {
+    mockWallet(ADMIN_ADDRESS);
+    mockUseAdminCampaigns.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      isSuccess: true,
+      data: [
+        {
+          ...CAMPAIGN_OVERVIEW,
+          id: '7',
+          campaign: {
+            ...CAMPAIGN_OVERVIEW.campaign,
+            status: { tag: 'Disputed' as const },
+          },
+        },
+      ],
+    });
+
+    const { unmount } = render(
+      <MemoryRouter>
+        <AdminDashboardPage />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByTestId('open-dispute-queue')).toHaveTextContent(
+      'Campaign #7',
+    );
+    expect(screen.getByRole('link', { name: /resolve/i })).toHaveAttribute(
+      'href',
+      '#admin-campaign-7',
+    );
+    unmount();
+
+    mockUseAdminCampaigns.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      isSuccess: true,
+      data: [CAMPAIGN_OVERVIEW],
+    });
+    render(
+      <MemoryRouter>
+        <AdminDashboardPage />
+      </MemoryRouter>,
+    );
+    expect(screen.queryByTestId('open-dispute-queue')).not.toBeInTheDocument();
   });
 });
