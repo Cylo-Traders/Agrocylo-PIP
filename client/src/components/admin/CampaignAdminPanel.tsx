@@ -433,6 +433,12 @@ function SettleCampaignForm({
   const [formError, setFormError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
+  const parsedPreview = parseWholeAmount(farmerPayout);
+  const returnablePreview =
+    parsedPreview !== null && parsedPreview <= heldAmount
+      ? heldAmount - parsedPreview
+      : null;
+
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
     setFormError(null);
@@ -445,7 +451,7 @@ function SettleCampaignForm({
     }
     if (parsed > heldAmount) {
       setFormError(
-        `Payout exceeds the escrow balance still held (${heldAmount.toString()}).`,
+        `Payout exceeds the escrow balance still held (${heldAmount.toString()}). Max allowed: ${heldAmount.toString()}.`,
       );
       return;
     }
@@ -467,8 +473,12 @@ function SettleCampaignForm({
     <form onSubmit={handleSubmit} className="space-y-3">
       <h3 className={sectionTitleClass}>Settle campaign</h3>
       <p className="text-body-sm text-soil-500">
-        Escrow held: {heldAmount.toString()} (contract units). The remainder
-        becomes returnable to investors.
+        Available only for <strong>Harvested</strong> campaigns. Escrow held:{' '}
+        <span className="font-semibold text-soil-800">
+          {heldAmount.toString()}
+        </span>{' '}
+        (contract units). Payout is capped at this amount; the remainder becomes
+        returnable to investors.
       </p>
       <div>
         <span className={labelClass}>Farmer</span>
@@ -487,7 +497,17 @@ function SettleCampaignForm({
           value={farmerPayout}
           onChange={(e) => setFarmerPayout(e.target.value)}
           placeholder="0"
+          max={heldAmount.toString()}
+          aria-describedby="settle-payout-hint"
         />
+        <p id="settle-payout-hint" className={hintClass}>
+          Maximum {heldAmount.toString()}. Use 0 for full investor return.
+        </p>
+        {returnablePreview !== null && (
+          <p className="mt-1 text-caption text-soil-600">
+            Investor returnable after settle: {returnablePreview.toString()}
+          </p>
+        )}
       </div>
       <button
         type="submit"
@@ -527,11 +547,12 @@ function MarkFailedForm({ campaignId }: { campaignId: string }) {
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3" data-testid="mark-failed-form">
       <h3 className={sectionTitleClass}>Mark failed</h3>
       <p className="text-body-sm text-soil-500">
-        Marks the campaign as failed and makes escrowed funds refundable to
-        investors. This cannot be undone.
+        Allowed for Active, Funding, Funded, or In Production campaigns. Marks
+        the campaign failed and makes escrowed funds refundable to investors.
+        This cannot be undone — confirmation is required.
       </p>
       {confirming ? (
         <div className="flex items-center gap-2">
@@ -657,14 +678,11 @@ export function CampaignAdminPanel({
         )}
 
         {status === 'Harvested' && (
-          <>
-            <SettleCampaignForm
-              campaignId={id}
-              farmerAddress={campaign.farmer}
-              heldAmount={held}
-            />
-            <MarkFailedForm campaignId={id} />
-          </>
+          <SettleCampaignForm
+            campaignId={id}
+            farmerAddress={campaign.farmer}
+            heldAmount={held}
+          />
         )}
 
         {status === 'Disputed' && (
