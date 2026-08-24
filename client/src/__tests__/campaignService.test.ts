@@ -1,49 +1,58 @@
+import { describe, it, expect } from 'vitest';
 import {
   validateContribution,
   calculateOwnershipShare,
-  fundCampaign,
+  parseContributionAmount,
 } from '../lib/soroban/campaignService';
 
-function assertEqual<T>(actual: T, expected: T, message?: string) {
-  if (actual !== expected) {
-    throw new Error(message || `Expected ${expected}, got ${actual}`);
-  }
-}
+describe('parseContributionAmount', () => {
+  it('parses whole-number strings as bigint contract units', () => {
+    expect(parseContributionAmount('500')).toBe(500n);
+    expect(parseContributionAmount(' 1000 ')).toBe(1000n);
+  });
 
-function assertTrue(condition: boolean, message?: string) {
-  if (!condition) {
-    throw new Error(message || 'Expected true, got false');
-  }
-}
+  it('rejects decimals, signs, scientific notation, and empty input', () => {
+    expect(parseContributionAmount('')).toBeNull();
+    expect(parseContributionAmount('0.5')).toBeNull();
+    expect(parseContributionAmount('-50')).toBeNull();
+    expect(parseContributionAmount('1e3')).toBeNull();
+    expect(parseContributionAmount('500.00')).toBeNull();
+    expect(parseContributionAmount('abc')).toBeNull();
+  });
+});
 
-// 1. Validation Tests
-const validRes = validateContribution(500, 1000);
-assertEqual(validRes.valid, true);
+describe('validateContribution', () => {
+  it('accepts a positive amount within the remaining target', () => {
+    expect(validateContribution(500, 1000)).toEqual({ valid: true });
+    expect(validateContribution(500n, 1000n)).toEqual({ valid: true });
+    expect(validateContribution('500', 1000)).toEqual({ valid: true });
+  });
 
-const zeroRes = validateContribution(0, 1000);
-assertEqual(zeroRes.valid, false);
-assertEqual(zeroRes.error, 'Contribution amount must be greater than zero');
+  it('rejects zero and negative amounts', () => {
+    const zeroRes = validateContribution(0, 1000);
+    expect(zeroRes.valid).toBe(false);
+    expect(zeroRes.error).toBe('Contribution amount must be greater than zero');
 
-const negativeRes = validateContribution(-50, 1000);
-assertEqual(negativeRes.valid, false);
+    expect(validateContribution(-50, 1000).valid).toBe(false);
+    expect(validateContribution(0n, 1000n).valid).toBe(false);
+  });
 
-const exceedsRes = validateContribution(1500, 1000);
-assertEqual(exceedsRes.valid, false);
-assertTrue(!!exceedsRes.error?.includes('exceeds remaining target'));
+  it('rejects amounts that exceed the remaining target', () => {
+    const exceedsRes = validateContribution(1500, 1000);
+    expect(exceedsRes.valid).toBe(false);
+    expect(exceedsRes.error).toMatch(/exceeds remaining target/);
+  });
 
-// 2. Ownership Share Calculation Tests
-assertEqual(calculateOwnershipShare(2500, 10000), 25);
-assertEqual(calculateOwnershipShare(5000, 10000), 50);
-assertEqual(calculateOwnershipShare(0, 10000), 0);
+  it('rejects non-integer amounts', () => {
+    expect(validateContribution(12.5, 1000).valid).toBe(false);
+    expect(validateContribution('12.5', 1000).valid).toBe(false);
+  });
+});
 
-// 3. Fund Campaign Execution Tests
-fundCampaign(
-  { campaignId: 'c1', amount: 1000, walletAddress: 'GUSER' },
-  2000,
-  10000,
-).then((res) => {
-  assertEqual(res.success, true);
-  assertTrue(!!res.txHash?.startsWith('0x'));
-  assertEqual(res.newTotalRaised, 3000);
-  assertEqual(res.newRemainingTarget, 7000);
+describe('calculateOwnershipShare', () => {
+  it('returns a percentage of the campaign target', () => {
+    expect(calculateOwnershipShare(2500, 10000)).toBe(25);
+    expect(calculateOwnershipShare(5000, 10000)).toBe(50);
+    expect(calculateOwnershipShare(0, 10000)).toBe(0);
+  });
 });

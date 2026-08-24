@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { Modal } from '../ui/Modal/Modal';
-import { useToast } from '../../context/ToastContext';
+import { useWallet } from '../../context/WalletContext';
+import { useFundCampaign } from '../../hooks/contract';
 import {
   validateContribution,
   calculateOwnershipShare,
-  fundCampaign,
+  parseContributionAmount,
   type FundCampaignResult,
 } from '../../lib/soroban/campaignService';
 import { toUserFacingError } from '../../lib/soroban/userFacingError';
@@ -16,7 +17,6 @@ export interface FundCampaignModalProps {
   campaignTitle: string;
   totalTarget: number;
   currentRaised: number;
-  walletAddress?: string;
   onSuccess?: (result: FundCampaignResult, addedAmount: number) => void;
 }
 
@@ -27,14 +27,13 @@ export const FundCampaignModal: React.FC<FundCampaignModalProps> = ({
   campaignTitle,
   totalTarget,
   currentRaised,
-  walletAddress = 'GDF4...M9XZ',
   onSuccess,
 }) => {
-  const toast = useToast();
+  const wallet = useWallet();
+  const fundCampaign = useFundCampaign();
   const remainingTarget = Math.max(0, totalTarget - currentRaised);
 
   const [amount, setAmount] = useState<string>('');
-  const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [successResult, setSuccessResult] = useState<FundCampaignResult | null>(
     null,
@@ -42,8 +41,11 @@ export const FundCampaignModal: React.FC<FundCampaignModalProps> = ({
 
   if (!isOpen) return null;
 
-  const numAmount = parseFloat(amount) || 0;
+  const parsedAmount = parseContributionAmount(amount);
+  const numAmount = parsedAmount !== null ? Number(parsedAmount) : 0;
   const estimatedShare = calculateOwnershipShare(numAmount, totalTarget);
+  const isSubmitting = fundCampaign.isPending;
+  const canSubmit = !isSubmitting && remainingTarget > 0 && wallet.isConnected;
 
   const handlePercentageSelect = (percentage: number) => {
     const calculated = Math.round((remainingTarget * percentage) / 100);
@@ -55,40 +57,37 @@ export const FundCampaignModal: React.FC<FundCampaignModalProps> = ({
     e.preventDefault();
     setError(null);
 
-    const validation = validateContribution(numAmount, remainingTarget);
-    if (!validation.valid) {
+    const validation = validateContribution(
+      parsedAmount ?? amount,
+      remainingTarget,
+    );
+    if (!validation.valid || parsedAmount === null) {
       setError(validation.error || 'Invalid contribution amount');
       return;
     }
 
-    setLoading(true);
-    try {
-      const res = await fundCampaign(
-        { campaignId, amount: numAmount, walletAddress },
-        currentRaised,
-        totalTarget,
-      );
+    if (!wallet.publicKey) {
+      setError('Connect your wallet to continue.');
+      return;
+    }
 
-      if (!res.success) {
-        const message = res.error || 'Failed to fund campaign';
-        setError(message);
-        toast.error('Could not fund campaign', message);
-      } else {
-        setSuccessResult(res);
-        toast.success(
-          'Contribution successful',
-          `You funded ${campaignTitle} with $${numAmount.toLocaleString()}.`,
-        );
-        if (onSuccess) {
-          onSuccess(res, numAmount);
-        }
-      }
+    try {
+      await fundCampaign.mutateAsync({
+        campaignId,
+        investor: wallet.publicKey,
+        amount: parsedAmount,
+      });
+
+      const addedAmount = Number(parsedAmount);
+      const res: FundCampaignResult = {
+        success: true,
+        newTotalRaised: currentRaised + addedAmount,
+        newRemainingTarget: Math.max(0, remainingTarget - addedAmount),
+      };
+      setSuccessResult(res);
+      onSuccess?.(res, addedAmount);
     } catch (err) {
-      const message = toUserFacingError(err);
-      setError(message);
-      toast.error('Could not fund campaign', message);
-    } finally {
-      setLoading(false);
+      setError(toUserFacingError(err));
     }
   };
 
@@ -177,6 +176,23 @@ export const FundCampaignModal: React.FC<FundCampaignModalProps> = ({
             </div>
           </div>
 
+          {!wallet.isConnected && (
+            <div
+              role="status"
+              className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-300"
+            >
+              <p>Connect your wallet to fund this campaign.</p>
+              <button
+                type="button"
+                onClick={() => void wallet.connect()}
+                disabled={wallet.isConnecting}
+                className="mt-2 rounded-lg bg-emerald-700 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-800 disabled:opacity-50"
+              >
+                {wallet.isConnecting ? 'Connecting...' : 'Connect wallet'}
+              </button>
+            </div>
+          )}
+
           {/* Error banner */}
           {error && (
             <div
@@ -205,16 +221,16 @@ export const FundCampaignModal: React.FC<FundCampaignModalProps> = ({
               </span>
               <input
                 id="contribution-amount"
-                type="number"
-                min="1"
-                max={remainingTarget}
-                step="any"
+                type="text"
+                inputMode="numeric"
+                autoComplete="off"
                 value={amount}
                 onChange={(e) => {
                   setAmount(e.target.value);
                   setError(null);
                 }}
                 placeholder="e.g. 500"
+                disabled={isSubmitting}
                 aria-invalid={!!error}
                 aria-describedby={
                   error ? 'contribution-amount-error' : undefined
@@ -252,10 +268,10 @@ export const FundCampaignModal: React.FC<FundCampaignModalProps> = ({
             </button>
             <button
               type="submit"
-              disabled={loading || remainingTarget <= 0}
+              disabled={!canSubmit}
               className="rounded-xl bg-emerald-700 px-5 py-2.5 font-semibold text-white shadow-sm transition hover:bg-emerald-800 disabled:opacity-50"
             >
-              {loading ? 'Confirming...' : 'Confirm Contribution'}
+              {isSubmitting ? 'Confirming...' : 'Confirm Contribution'}
             </button>
           </div>
         </form>
