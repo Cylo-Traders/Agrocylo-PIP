@@ -10,4 +10,6 @@ export const contractQueryKeys = {
   activity: (campaignId: string) => ['activity', campaignId] as const,
   escrowAdmin: () => ['escrowAdmin'] as const,
   adminCampaignsOverview: () => ['adminCampaignsOverview'] as const,
+  investorPortfolio: (address: string) =>
+    ['investorPortfolio', address] as const,
 };

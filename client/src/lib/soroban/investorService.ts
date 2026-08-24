@@ -1,5 +1,7 @@
-export type CampaignStatus =
-  'Active' | 'Funding' | 'Resolved' | 'Failed' | 'Settled';
+import type { EscrowEvent } from './events';
+import type { Campaign, CampaignStatusTag } from './types';
+
+export type CampaignStatus = CampaignStatusTag;
 
 export interface FundedInvestment {
   campaignId: string;
@@ -18,6 +20,174 @@ export interface PortfolioStats {
   totalPending: number;
 }
 
+export interface InvestorCampaignAmounts {
+  contributed: bigint;
+  claimedRefund: bigint;
+  claimedReturn: bigint;
+  firstFundedAt: string | null;
+}
+
+export interface InvestorPortfolioSnapshot {
+  campaignId: string;
+  campaign: Campaign;
+  currentContribution: bigint;
+  amounts: InvestorCampaignAmounts;
+  walletAddress: string;
+  title?: string;
+}
+
+function toBigInt(value: unknown): bigint {
+  if (typeof value === 'bigint') return value;
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return BigInt(Math.trunc(value));
+  }
+  if (typeof value === 'string' && /^-?\d+$/.test(value)) return BigInt(value);
+  return 0n;
+}
+
+function toAddress(value: unknown): string {
+  return typeof value === 'string' ? value : String(value ?? '');
+}
+
+function addressesMatch(a: string, b: string): boolean {
+  return a.toLowerCase() === b.toLowerCase();
+}
+
+function unixToIso(value: unknown): string | null {
+  const seconds =
+    typeof value === 'bigint' ? Number(value) : Number(value ?? Number.NaN);
+  if (!Number.isFinite(seconds) || seconds <= 0) return null;
+  return new Date(seconds * 1000).toISOString();
+}
+
+/** Integer pro-rata share matching ProductionEscrowContract claim math. */
+export function proRataShare(
+  contributed: bigint,
+  pool: bigint,
+  totalFunded: bigint,
+): bigint {
+  if (contributed <= 0n || pool <= 0n || totalFunded <= 0n) return 0n;
+  return (contributed * pool) / totalFunded;
+}
+
+export function claimableForStatus(
+  status: CampaignStatusTag,
+  contributed: bigint,
+  campaign: Campaign,
+): bigint {
+  if (status === 'Resolved' || status === 'Failed') {
+    return proRataShare(
+      contributed,
+      campaign.refundable,
+      campaign.total_funded,
+    );
+  }
+  if (status === 'Settled') {
+    return proRataShare(
+      contributed,
+      campaign.returnable,
+      campaign.total_funded,
+    );
+  }
+  return 0n;
+}
+
+/**
+ * Groups escrow events for a single investor into per-campaign contribution
+ * and claim totals. Used by the dashboard so portfolio rows come from
+ * ContribReceived / RefundClaimed / ReturnClaimed logs, not MOCK_INVESTMENTS.
+ */
+export function aggregateInvestorEvents(
+  events: EscrowEvent[],
+  walletAddress: string,
+): Map<string, InvestorCampaignAmounts> {
+  const byCampaign = new Map<string, InvestorCampaignAmounts>();
+
+  const ensure = (campaignId: string): InvestorCampaignAmounts => {
+    const existing = byCampaign.get(campaignId);
+    if (existing) return existing;
+    const created: InvestorCampaignAmounts = {
+      contributed: 0n,
+      claimedRefund: 0n,
+      claimedReturn: 0n,
+      firstFundedAt: null,
+    };
+    byCampaign.set(campaignId, created);
+    return created;
+  };
+
+  for (const event of events) {
+    if (!event.campaignId) continue;
+    const investor = toAddress(event.values[0]);
+    if (!investor || !addressesMatch(investor, walletAddress)) continue;
+
+    if (event.name === 'ContribReceived') {
+      const amounts = ensure(event.campaignId);
+      amounts.contributed += toBigInt(event.values[2]);
+      if (!amounts.firstFundedAt) {
+        amounts.firstFundedAt = unixToIso(event.values[1]);
+      }
+    } else if (event.name === 'RefundClaimed') {
+      ensure(event.campaignId).claimedRefund += toBigInt(event.values[2]);
+    } else if (event.name === 'ReturnClaimed') {
+      ensure(event.campaignId).claimedReturn += toBigInt(event.values[2]);
+    }
+  }
+
+  return byCampaign;
+}
+
+export function toFundedInvestment(
+  snapshot: InvestorPortfolioSnapshot,
+): FundedInvestment {
+  const status = snapshot.campaign.status.tag;
+  const remaining = snapshot.currentContribution;
+  const originalContributed =
+    remaining > 0n ? remaining : snapshot.amounts.contributed;
+  const claimedPayout =
+    snapshot.amounts.claimedRefund + snapshot.amounts.claimedReturn;
+  const claimed = remaining <= 0n && claimedPayout > 0n;
+  const claimable = claimed
+    ? claimedPayout
+    : claimableForStatus(status, remaining, snapshot.campaign);
+
+  return {
+    campaignId: snapshot.campaignId,
+    title:
+      snapshot.title?.trim() ||
+      snapshot.campaign.harvest_metadata ||
+      `Campaign #${snapshot.campaignId}`,
+    amountContributed: Number(originalContributed),
+    status,
+    claimableAmount: Number(claimable),
+    claimed,
+    walletAddress: snapshot.walletAddress,
+    fundedAt: snapshot.amounts.firstFundedAt ?? '',
+  };
+}
+
+export function calculatePortfolioStats(
+  investments: FundedInvestment[],
+): PortfolioStats {
+  return investments.reduce(
+    (acc, inv) => {
+      acc.totalInvested += inv.amountContributed;
+      if (inv.claimed) {
+        acc.totalClaimed += inv.claimableAmount;
+      } else {
+        acc.totalPending += inv.claimableAmount;
+      }
+      return acc;
+    },
+    { totalInvested: 0, totalClaimed: 0, totalPending: 0 },
+  );
+}
+
+/**
+ * Fixture data used only by `src/__tests__/investorService.test.ts` (excluded
+ * from the vitest suite). The live dashboard reads on-chain events via
+ * `useInvestorPortfolio` — do not import these mocks from pages/components.
+ */
 const MOCK_INVESTMENTS: FundedInvestment[] = [
   {
     campaignId: 'camp-101',
@@ -51,6 +221,7 @@ const MOCK_INVESTMENTS: FundedInvestment[] = [
   },
 ];
 
+/** @deprecated Test/storybook fixture. The dashboard does not call this. */
 export function getInvestorPortfolio(
   walletAddress: string,
 ): FundedInvestment[] {
@@ -61,23 +232,7 @@ export function getInvestorPortfolio(
   );
 }
 
-export function calculatePortfolioStats(
-  investments: FundedInvestment[],
-): PortfolioStats {
-  return investments.reduce(
-    (acc, inv) => {
-      acc.totalInvested += inv.amountContributed;
-      if (inv.claimed) {
-        acc.totalClaimed += inv.claimableAmount;
-      } else {
-        acc.totalPending += inv.claimableAmount;
-      }
-      return acc;
-    },
-    { totalInvested: 0, totalClaimed: 0, totalPending: 0 },
-  );
-}
-
+/** @deprecated Test fixture. Claims go through `useClaimRefund`. */
 export async function claimRefund(
   campaignId: string,
   walletAddress: string,
@@ -122,6 +277,7 @@ export async function claimRefund(
   };
 }
 
+/** @deprecated Test fixture. Claims go through `useClaimReturn`. */
 export async function claimReturn(
   campaignId: string,
   walletAddress: string,
