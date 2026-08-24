@@ -9,6 +9,7 @@ import {
   useResolveDispute,
   useSettleCampaign,
   useMarkFailed,
+  useTranches,
 } from '../../hooks/contract';
 import { toUserFacingError } from '../../lib/soroban/userFacingError';
 import {
@@ -16,7 +17,19 @@ import {
   isValidContractSymbol,
 } from '../../lib/soroban/symbol';
 import type { AdminCampaignOverview } from '../../hooks/useAdminCampaigns';
-import type { DisputeResolutionTag } from '../../lib/soroban/types';
+import type {
+  CampaignStatusTag,
+  DisputeResolutionTag,
+  Tranche,
+} from '../../lib/soroban/types';
+
+/** Matches ProductionEscrowContract::is_terminal — release is blocked on-chain. */
+const TERMINAL_STATUSES: ReadonlySet<CampaignStatusTag> = new Set([
+  'Disputed',
+  'Resolved',
+  'Settled',
+  'Failed',
+]);
 
 const cardClass =
   'rounded-campaign border border-soil-200 bg-white p-6 shadow-campaign';
@@ -213,57 +226,100 @@ function ReleaseTrancheForm({
   campaignId,
   farmerAddress,
   heldAmount,
+  canRelease,
 }: {
   campaignId: string;
   farmerAddress: string;
   heldAmount: bigint;
+  /** False for terminal/disputed campaigns (contract blocks release). */
+  canRelease: boolean;
 }) {
   const releaseTranche = useReleaseTranche();
+  const tranchesQuery = useTranches(campaignId);
   const [recipient, setRecipient] = useState(farmerAddress);
   const [amount, setAmount] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [releasingAmount, setReleasingAmount] = useState<bigint | null>(null);
 
-  async function handleSubmit(event: FormEvent) {
-    event.preventDefault();
+  const tranches: Tranche[] = tranchesQuery.data ?? [];
+  const hasConfiguredTranches = tranches.length > 0;
+  const unreleased = tranches.filter((t) => !t.released);
+  const busy = releaseTranche.isPending;
+
+  async function release(amountValue: bigint, label: string) {
     setFormError(null);
-    setSuccess(false);
+    setSuccessMessage(null);
 
+    if (!canRelease) {
+      setFormError(
+        'Cannot release: campaign is in a terminal or disputed state.',
+      );
+      return;
+    }
     if (!isValidAddress(recipient)) {
       setFormError('Enter a valid recipient address.');
       return;
     }
-    const parsedAmount = parseWholeAmount(amount);
-    if (parsedAmount === null || parsedAmount <= 0n) {
-      setFormError('Enter a whole number greater than zero.');
+    if (amountValue <= 0n) {
+      setFormError('Amount must be greater than zero.');
       return;
     }
-    if (parsedAmount > heldAmount) {
+    if (amountValue > heldAmount) {
       setFormError(
         `Amount exceeds the escrow balance still held (${heldAmount.toString()}).`,
       );
       return;
     }
 
+    setReleasingAmount(amountValue);
     try {
       await releaseTranche.mutateAsync({
         campaignId,
         recipient,
-        amount: parsedAmount,
+        amount: amountValue,
       });
-      setSuccess(true);
+      setSuccessMessage(label);
       setAmount('');
     } catch (err) {
       setFormError(toUserFacingError(err));
+    } finally {
+      setReleasingAmount(null);
     }
   }
 
+  async function handleAdHocSubmit(event: FormEvent) {
+    event.preventDefault();
+    const parsedAmount = parseWholeAmount(amount);
+    if (parsedAmount === null || parsedAmount <= 0n) {
+      setFormError('Enter a whole number greater than zero.');
+      return;
+    }
+    await release(parsedAmount, 'Tranche released.');
+  }
+
   return (
-    <form onSubmit={handleSubmit} className="space-y-3">
+    <div className="space-y-3">
       <h3 className={sectionTitleClass}>Release tranche</h3>
       <p className="text-body-sm text-soil-500">
-        Escrow held: {heldAmount.toString()} (contract units)
+        Escrow held:{' '}
+        <span className="font-semibold text-soil-800">
+          {heldAmount.toString()}
+        </span>{' '}
+        (contract units). Matches on-chain{' '}
+        <code className="font-mono text-caption">
+          total_funded − released − refundable − returnable
+        </code>
+        .
       </p>
+
+      {!canRelease && (
+        <p className={errorClass}>
+          Release is disabled while the campaign is disputed, resolved, settled,
+          or failed.
+        </p>
+      )}
+
       <div>
         <label className={labelClass} htmlFor="release-recipient">
           Recipient
@@ -273,35 +329,121 @@ function ReleaseTrancheForm({
           className={`${inputClass} font-mono`}
           value={recipient}
           onChange={(e) => setRecipient(e.target.value)}
+          disabled={!canRelease || busy}
         />
       </div>
-      <div>
-        <label className={labelClass} htmlFor="release-amount">
-          Amount
-        </label>
-        <input
-          id="release-amount"
-          className={inputClass}
-          inputMode="numeric"
-          value={amount}
-          onChange={(e) => setAmount(e.target.value)}
-          placeholder="5000"
-        />
-      </div>
-      <button
-        type="submit"
-        disabled={releaseTranche.isPending}
-        className={primaryButtonClass}
-      >
-        {releaseTranche.isPending ? 'Confirm in wallet…' : 'Release tranche'}
-      </button>
-      <ActionError message={formError} />
-      {success && (
-        <p className="text-caption text-status-active-dark">
-          Tranche released.
-        </p>
+
+      {tranchesQuery.isLoading && (
+        <p className="text-caption text-soil-400">Loading configured tranches…</p>
       )}
-    </form>
+
+      {hasConfiguredTranches && (
+        <div className="overflow-x-auto rounded-lg border border-soil-200">
+          <table className="min-w-full text-left text-body-sm">
+            <thead className="bg-soil-50 text-caption uppercase text-soil-500">
+              <tr>
+                <th className="px-3 py-2 font-medium">Milestone</th>
+                <th className="px-3 py-2 font-medium">Amount</th>
+                <th className="px-3 py-2 font-medium">Status</th>
+                <th className="px-3 py-2 font-medium">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {tranches.map((tranche, index) => {
+                const isReleasingThis =
+                  busy && releasingAmount === tranche.amount && !tranche.released;
+                const releaseDisabled =
+                  !canRelease ||
+                  busy ||
+                  tranche.released ||
+                  tranche.amount > heldAmount;
+
+                return (
+                  <tr
+                    key={`${tranche.milestone}-${tranche.amount.toString()}-${index}`}
+                    className="border-t border-soil-100"
+                  >
+                    <td className="px-3 py-2 font-mono text-soil-800">
+                      {tranche.milestone}
+                    </td>
+                    <td className="px-3 py-2 font-semibold text-soil-900">
+                      {tranche.amount.toString()}
+                    </td>
+                    <td className="px-3 py-2">
+                      {tranche.released ? (
+                        <span className="text-status-active-dark">Released</span>
+                      ) : (
+                        <span className="text-soil-500">Pending</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2">
+                      {tranche.released ? (
+                        <span className="text-caption text-soil-400">—</span>
+                      ) : (
+                        <button
+                          type="button"
+                          className={primaryButtonClass}
+                          disabled={releaseDisabled}
+                          aria-label={`Release tranche ${tranche.milestone} amount ${tranche.amount.toString()}`}
+                          onClick={() =>
+                            void release(
+                              tranche.amount,
+                              `Released ${tranche.milestone} (${tranche.amount.toString()}).`,
+                            )
+                          }
+                        >
+                          {isReleasingThis ? 'Confirm in wallet…' : 'Release'}
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          {unreleased.length === 0 && (
+            <p className="border-t border-soil-100 px-3 py-2 text-caption text-soil-500">
+              All configured tranches have been released.
+            </p>
+          )}
+        </div>
+      )}
+
+      {!hasConfiguredTranches && !tranchesQuery.isLoading && (
+        <form onSubmit={(e) => void handleAdHocSubmit(e)} className="space-y-3">
+          <p className="text-caption text-soil-500">
+            No tranches configured yet. You can still release an ad hoc amount
+            (or configure tranches first).
+          </p>
+          <div>
+            <label className={labelClass} htmlFor="release-amount">
+              Amount
+            </label>
+            <input
+              id="release-amount"
+              className={inputClass}
+              inputMode="numeric"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              placeholder="5000"
+              disabled={!canRelease || busy}
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={!canRelease || busy}
+            className={primaryButtonClass}
+          >
+            {busy ? 'Confirm in wallet…' : 'Release tranche'}
+          </button>
+        </form>
+      )}
+
+      <ActionError message={formError} />
+      {successMessage && (
+        <p className="text-caption text-status-active-dark">{successMessage}</p>
+      )}
+    </div>
   );
 }
 
@@ -583,6 +725,7 @@ export function CampaignAdminPanel({
   const { id, campaign } = overview;
   const status = campaign.status.tag;
   const held = escrowHeld(campaign);
+  const canRelease = !TERMINAL_STATUSES.has(status);
 
   return (
     <div className={cardClass}>
@@ -640,6 +783,7 @@ export function CampaignAdminPanel({
               campaignId={id}
               farmerAddress={campaign.farmer}
               heldAmount={held}
+              canRelease={canRelease}
             />
             <MarkFailedForm campaignId={id} />
           </>
@@ -651,20 +795,18 @@ export function CampaignAdminPanel({
               campaignId={id}
               farmerAddress={campaign.farmer}
               heldAmount={held}
+              canRelease={canRelease}
             />
             <MarkFailedForm campaignId={id} />
           </>
         )}
 
         {status === 'Harvested' && (
-          <>
-            <SettleCampaignForm
-              campaignId={id}
-              farmerAddress={campaign.farmer}
-              heldAmount={held}
-            />
-            <MarkFailedForm campaignId={id} />
-          </>
+          <SettleCampaignForm
+            campaignId={id}
+            farmerAddress={campaign.farmer}
+            heldAmount={held}
+          />
         )}
 
         {status === 'Disputed' && (
