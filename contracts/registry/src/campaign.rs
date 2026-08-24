@@ -1,5 +1,5 @@
-use crate::{events, storage};
 use crate::types::{CampaignInfo, CampaignRecord, CampaignStatus};
+use crate::{events, storage};
 use production_escrow::{CampaignStatus as EscrowCampaignStatus, ProductionEscrowContractClient};
 use soroban_sdk::{Address, Env, String, Symbol, Vec};
 
@@ -32,6 +32,12 @@ pub fn register_campaign(
 
 pub fn get_campaign(env: &Env, campaign_id: u64) -> Option<CampaignInfo> {
     storage::get_campaign(env, campaign_id)
+}
+
+/// Permissionless keep-alive for a campaign's persistent storage entries.
+/// Extends TTL only; does not change stored values. See `storage::touch_campaign`.
+pub fn touch_campaign(env: &Env, campaign_id: u64) {
+    storage::touch_campaign(env, campaign_id);
 }
 
 /// Links a campaign to its ProductionEscrowContract instance and crop/region
@@ -78,8 +84,7 @@ pub fn update_campaign_status(
     caller: &Address,
     new_status: CampaignStatus,
 ) {
-    let mut record = storage::get_campaign_record(env, campaign_id)
-        .unwrap_or_else(|| panic!("campaign record not found"));
+    let mut record = storage::require_campaign_record(env, campaign_id);
 
     let is_admin = storage::get_admin(env) == *caller;
     let is_registered_escrow = record.escrow_contract == *caller;
@@ -139,13 +144,12 @@ fn map_escrow_status(status: &EscrowCampaignStatus) -> CampaignStatus {
 /// Returns `true` if drift was found and corrected, `false` if the mirror
 /// already matched.
 pub fn reconcile_campaign_status(env: &Env, campaign_id: u64) -> bool {
-    let mut record = storage::get_campaign_record(env, campaign_id)
-        .unwrap_or_else(|| panic!("campaign record not found"));
+    let mut record = storage::require_campaign_record(env, campaign_id);
 
     let escrow_client = ProductionEscrowContractClient::new(env, &record.escrow_contract);
     let escrow_campaign = escrow_client
         .get_campaign(&campaign_id)
-        .unwrap_or_else(|| panic!("linked escrow campaign not found"));
+        .unwrap_or_else(|| panic!("linked escrow campaign not found (missing or archived; restore with RestoreFootprintOp or keep alive via touch_campaign)"));
     let true_status = map_escrow_status(&escrow_campaign.status);
 
     if record.status == true_status {

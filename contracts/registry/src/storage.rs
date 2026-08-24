@@ -1,11 +1,20 @@
 use crate::types::{CampaignInfo, CampaignRecord, DataKey, FarmerProfile};
 use soroban_sdk::{Address, Env, Vec};
 
-const DAY_IN_LEDGERS: u32 = 17280;
+/// Approximate number of ledgers in a 24h period on Stellar (~5s/ledger).
+pub const DAY_IN_LEDGERS: u32 = 17280;
 const INSTANCE_LIFETIME_THRESHOLD: u32 = DAY_IN_LEDGERS * 30;
 const INSTANCE_BUMP_AMOUNT: u32 = DAY_IN_LEDGERS * 90;
-const PERSISTENT_LIFETIME_THRESHOLD: u32 = DAY_IN_LEDGERS * 30;
-const PERSISTENT_BUMP_AMOUNT: u32 = DAY_IN_LEDGERS * 90;
+/// If a persistent entry's remaining TTL is below this many ledgers (~30 days),
+/// the next write/touch extends it. See the TTL / archival section of README.md.
+pub const PERSISTENT_LIFETIME_THRESHOLD: u32 = DAY_IN_LEDGERS * 30;
+/// Target remaining TTL after a bump (~90 days of ledgers).
+pub const PERSISTENT_BUMP_AMOUNT: u32 = DAY_IN_LEDGERS * 90;
+
+/// Panic message used when a mutating path needs a campaign record that is
+/// either missing or whose persistent entry has been archived.
+pub const MISSING_OR_ARCHIVED_CAMPAIGN: &str = "campaign not found (missing or archived; restore with RestoreFootprintOp or keep alive via touch_campaign)";
+pub const MISSING_OR_ARCHIVED_CAMPAIGN_RECORD: &str = "campaign record not found (missing or archived; restore with RestoreFootprintOp or keep alive via touch_campaign)";
 
 /// Maximum number of `ActivityRecord`s stored per `CampaignActivitiesPage`.
 ///
@@ -31,9 +40,53 @@ pub fn extend_instance_ttl(env: &Env) {
 }
 
 pub fn extend_persistent_ttl(env: &Env, key: &DataKey) {
-    env.storage()
-        .persistent()
-        .extend_ttl(key, PERSISTENT_LIFETIME_THRESHOLD, PERSISTENT_BUMP_AMOUNT);
+    env.storage().persistent().extend_ttl(
+        key,
+        PERSISTENT_LIFETIME_THRESHOLD,
+        PERSISTENT_BUMP_AMOUNT,
+    );
+}
+
+fn extend_if_present(env: &Env, key: &DataKey) {
+    if env.storage().persistent().has(key) {
+        extend_persistent_ttl(env, key);
+    }
+}
+
+/// Permissionless keep-alive: extends TTL on every persistent campaign entry
+/// that currently exists (`Campaign` metadata, `CampaignRecord`, activity
+/// page-count and each activity page) plus the contract instance. Does not
+/// change any stored value.
+///
+/// Farmer-keyed entries (`Farmer`, `FarmerCampaignsPage*`) are not campaign
+/// scoped and are not bumped here.
+///
+/// Panics if neither the `Campaign` nor `CampaignRecord` key is present.
+pub fn touch_campaign(env: &Env, campaign_id: u64) {
+    let campaign_key = DataKey::Campaign(campaign_id);
+    let record_key = DataKey::CampaignRecord(campaign_id);
+    let has_campaign = env.storage().persistent().has(&campaign_key);
+    let has_record = env.storage().persistent().has(&record_key);
+    if !has_campaign && !has_record {
+        panic!("{}", MISSING_OR_ARCHIVED_CAMPAIGN);
+    }
+    if has_campaign {
+        extend_persistent_ttl(env, &campaign_key);
+    }
+    if has_record {
+        extend_persistent_ttl(env, &record_key);
+    }
+
+    let count_key = DataKey::CampaignActivitiesPageCount(campaign_id);
+    if env.storage().persistent().has(&count_key) {
+        let page_count: u32 = env.storage().persistent().get(&count_key).unwrap_or(0);
+        extend_persistent_ttl(env, &count_key);
+        for page in 0..page_count {
+            extend_if_present(env, &DataKey::CampaignActivitiesPage(campaign_id, page));
+        }
+    }
+
+    extend_instance_ttl(env);
 }
 
 pub fn has_admin(env: &Env) -> bool {
@@ -86,6 +139,11 @@ pub fn has_campaign(env: &Env, campaign_id: u64) -> bool {
 pub fn get_campaign(env: &Env, campaign_id: u64) -> Option<CampaignInfo> {
     let key = DataKey::Campaign(campaign_id);
     env.storage().persistent().get(&key)
+}
+
+pub fn require_campaign_record(env: &Env, campaign_id: u64) -> CampaignRecord {
+    get_campaign_record(env, campaign_id)
+        .unwrap_or_else(|| panic!("{}", MISSING_OR_ARCHIVED_CAMPAIGN_RECORD))
 }
 
 pub fn set_campaign(env: &Env, campaign: &CampaignInfo) {

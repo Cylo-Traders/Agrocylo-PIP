@@ -1,11 +1,21 @@
 use crate::types::{Campaign, DataKey, Dispute, HarvestRecord, TrancheList};
 use soroban_sdk::{Address, Env, Vec};
 
-const DAY_IN_LEDGERS: u32 = 17280;
+/// Approximate number of ledgers in a 24h period on Stellar (~5s/ledger).
+pub const DAY_IN_LEDGERS: u32 = 17280;
 const INSTANCE_LIFETIME_THRESHOLD: u32 = DAY_IN_LEDGERS * 30;
 const INSTANCE_BUMP_AMOUNT: u32 = DAY_IN_LEDGERS * 90;
-const PERSISTENT_LIFETIME_THRESHOLD: u32 = DAY_IN_LEDGERS * 30;
-const PERSISTENT_BUMP_AMOUNT: u32 = DAY_IN_LEDGERS * 90;
+/// If a persistent entry's remaining TTL is below this many ledgers (~30 days),
+/// the next write/touch extends it. See the TTL / archival section of README.md.
+pub const PERSISTENT_LIFETIME_THRESHOLD: u32 = DAY_IN_LEDGERS * 30;
+/// Target remaining TTL after a bump (~90 days of ledgers).
+pub const PERSISTENT_BUMP_AMOUNT: u32 = DAY_IN_LEDGERS * 90;
+
+/// Panic message used when a mutating path needs a campaign that is either
+/// missing or whose persistent entry has been archived. Public getters return
+/// `Option` instead; this string is for write-path preconditions.
+pub const MISSING_OR_ARCHIVED_CAMPAIGN: &str = "campaign not found (missing or archived; restore with RestoreFootprintOp or keep alive via touch_campaign)";
+pub const MISSING_OR_ARCHIVED_DISPUTE: &str = "dispute not found (missing or archived; restore with RestoreFootprintOp or keep alive via touch_campaign)";
 
 pub fn extend_instance_ttl(env: &Env) {
     env.storage()
@@ -14,9 +24,37 @@ pub fn extend_instance_ttl(env: &Env) {
 }
 
 fn extend_persistent_ttl(env: &Env, key: &DataKey) {
-    env.storage()
-        .persistent()
-        .extend_ttl(key, PERSISTENT_LIFETIME_THRESHOLD, PERSISTENT_BUMP_AMOUNT);
+    env.storage().persistent().extend_ttl(
+        key,
+        PERSISTENT_LIFETIME_THRESHOLD,
+        PERSISTENT_BUMP_AMOUNT,
+    );
+}
+
+fn extend_if_present(env: &Env, key: &DataKey) {
+    if env.storage().persistent().has(key) {
+        extend_persistent_ttl(env, key);
+    }
+}
+
+/// Permissionless keep-alive: extends TTL on every persistent campaign entry
+/// that currently exists (`Campaign`, and if present `Dispute`, `Tranches`,
+/// `HarvestRecord`) plus the contract instance. Does not change any stored
+/// value. Contribution keys are per-investor and are not enumerated here.
+///
+/// Panics if the campaign key is missing (never created) or unreadable
+/// because it has already been archived — in the archived case the host
+/// fails the read and a `RestoreFootprintOp` is required first.
+pub fn touch_campaign(env: &Env, campaign_id: u64) {
+    let campaign_key = DataKey::Campaign(campaign_id);
+    if !env.storage().persistent().has(&campaign_key) {
+        panic!("{}", MISSING_OR_ARCHIVED_CAMPAIGN);
+    }
+    extend_persistent_ttl(env, &campaign_key);
+    extend_if_present(env, &DataKey::Dispute(campaign_id));
+    extend_if_present(env, &DataKey::Tranches(campaign_id));
+    extend_if_present(env, &DataKey::HarvestRecord(campaign_id));
+    extend_instance_ttl(env);
 }
 
 pub fn has_admin(env: &Env) -> bool {
@@ -46,6 +84,13 @@ pub fn get_campaign(env: &Env, campaign_id: u64) -> Option<Campaign> {
     campaign
 }
 
+/// Like `get_campaign`, but panics with an archival-aware message when the
+/// entry is missing. Used by mutating methods that require the campaign to
+/// already exist.
+pub fn require_campaign(env: &Env, campaign_id: u64) -> Campaign {
+    get_campaign(env, campaign_id).unwrap_or_else(|| panic!("{}", MISSING_OR_ARCHIVED_CAMPAIGN))
+}
+
 pub fn set_campaign(env: &Env, campaign_id: u64, campaign: &Campaign) {
     let key = DataKey::Campaign(campaign_id);
     env.storage().persistent().set(&key, campaign);
@@ -59,6 +104,10 @@ pub fn get_dispute(env: &Env, campaign_id: u64) -> Option<Dispute> {
         extend_persistent_ttl(env, &key);
     }
     dispute
+}
+
+pub fn require_dispute(env: &Env, campaign_id: u64) -> Dispute {
+    get_dispute(env, campaign_id).unwrap_or_else(|| panic!("{}", MISSING_OR_ARCHIVED_DISPUTE))
 }
 
 pub fn set_dispute(env: &Env, campaign_id: u64, dispute: &Dispute) {

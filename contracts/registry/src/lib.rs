@@ -148,6 +148,20 @@ impl RegistryContract {
     pub fn reconcile_campaign_status(env: Env, campaign_id: u64) -> bool {
         campaign::reconcile_campaign_status(&env, campaign_id)
     }
+
+    /// Permissionless keep-alive for a campaign's persistent storage entries.
+    ///
+    /// Extends TTL on `Campaign` metadata, `CampaignRecord`, and all activity
+    /// pages when present, plus the contract instance. Does not modify any
+    /// stored value. An indexer or keeper can call this periodically so
+    /// settled / failed / resolved campaigns stay readable without a
+    /// `RestoreFootprintOp`.
+    ///
+    /// Once an entry has already been archived, this call cannot revive it —
+    /// restore the footprint first, then resume touching.
+    pub fn touch_campaign(env: Env, campaign_id: u64) {
+        campaign::touch_campaign(&env, campaign_id);
+    }
 }
 
 #[cfg(test)]
