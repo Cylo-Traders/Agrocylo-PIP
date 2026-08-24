@@ -7,6 +7,7 @@ import { AnalyticsDashboardPage } from './pages/AnalyticsDashboardPage';
 import { AdminDashboardPage } from './pages/AdminDashboardPage';
 import { ActivityFeedPage } from './pages/ActivityFeedPage';
 import { CampaignDetailPage } from './pages/CampaignDetailPage';
+import { CreateCampaignPage, CampaignsPage } from './pages';
 import './App.css';
 
 export default function App() {
@@ -52,6 +53,8 @@ export default function App() {
       {/* AppLayout routes */}
       <Route element={<AppLayout />}>
         <Route path="/activity" element={<ActivityFeedPage />} />
+        <Route path="/campaigns" element={<CampaignsPage />} />
+        <Route path="/campaigns/new" element={<CreateCampaignPage />} />
         <Route path="/campaigns/:id" element={<CampaignDetailPage />} />
       </Route>
     </Routes>
