@@ -21,7 +21,10 @@ acceptance criterion in this sandboxed environment:
    scope for an accessibility pass and would bury this diff in noise.)
 2. **Automated DOM/ARIA scan** — added `jest-axe` (`axe-core`) as a Vitest
    suite (`src/__tests__/accessibility.test.tsx`) covering `DesignFoundationsPage`,
-   `AnalyticsDashboardPage`, `CreateCampaignPage`, and `FundCampaignModal`.
+   `AnalyticsDashboardPage`, `CreateCampaignPage`, and `FundCampaignModal`, plus
+   a follow-up suite (`src/__tests__/dispute-accessibility.test.tsx`) covering
+   `OpenDisputeForm` and the `Disputed`-status `CampaignAdminPanel`
+   (`ResolveDisputeForm`).
    axe's `color-contrast` rule is explicitly disabled in that suite: the test
    environment is `happy-dom`, which has no real layout/paint engine, so it
    cannot compute actually-rendered colors and the rule is unreliable there.
@@ -45,11 +48,11 @@ acceptance criterion in this sandboxed environment:
 
 ### 1. Color contrast (status badges + primary text)
 
-| Location | Before | After | Ratio before → after |
-|---|---|---|---|
-| `components/ui/Badge/Badge.css` — 9 status variants + 5 generic variants | text colors as light as `hsl(x, y%, 30-45%)` over a 10%-alpha fill | darkened lightness per-hue (see inline comment in the file) | as low as **2.75:1** → all ≥ **4.6:1** against both white and `soil-50` page backgrounds |
-| `text-soil-400` / `text-soil-500` used as real copy (captions, labels, hints, dt/dd pairs) across `Header`, `StatTile`, `ChartCard`, `ComingSoonCard`, `LifecycleStepper`, `CreateCampaignPage`, `DesignFoundationsPage`, `AppLayout` | `soil-400` **2.98:1**, `soil-500` **4.10:1** on white | bumped to `soil-600` | **≥ 5.96:1** |
-| `FundCampaignModal` / `CampaignDetailPage` / `InvestorDashboardPage` / `InvestmentCard` / `InvestorSummaryStats` — a second, independent Tailwind-default (slate/emerald/amber) design system used only in these files | `text-slate-400` **2.56:1**; primary CTA buttons `bg-emerald-600` white text **3.77:1**; `bg-amber-600` white text **3.19:1** | `slate-400`→`slate-600`; buttons →`emerald-700`/`amber-700` (hover `-800`) | **≥ 4.66:1** (text), **≥ 5.02:1** (buttons) |
+| Location                                                                                                                                                                                                                              | Before                                                                                                                        | After                                                                      | Ratio before → after                                                                     |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `components/ui/Badge/Badge.css` — 9 status variants + 5 generic variants                                                                                                                                                              | text colors as light as `hsl(x, y%, 30-45%)` over a 10%-alpha fill                                                            | darkened lightness per-hue (see inline comment in the file)                | as low as **2.75:1** → all ≥ **4.6:1** against both white and `soil-50` page backgrounds |
+| `text-soil-400` / `text-soil-500` used as real copy (captions, labels, hints, dt/dd pairs) across `Header`, `StatTile`, `ChartCard`, `ComingSoonCard`, `LifecycleStepper`, `CreateCampaignPage`, `DesignFoundationsPage`, `AppLayout` | `soil-400` **2.98:1**, `soil-500` **4.10:1** on white                                                                         | bumped to `soil-600`                                                       | **≥ 5.96:1**                                                                             |
+| `FundCampaignModal` / `CampaignDetailPage` / `InvestorDashboardPage` / `InvestmentCard` / `InvestorSummaryStats` — a second, independent Tailwind-default (slate/emerald/amber) design system used only in these files                | `text-slate-400` **2.56:1**; primary CTA buttons `bg-emerald-600` white text **3.77:1**; `bg-amber-600` white text **3.19:1** | `slate-400`→`slate-600`; buttons →`emerald-700`/`amber-700` (hover `-800`) | **≥ 4.66:1** (text), **≥ 5.02:1** (buttons)                                              |
 
 `dark:` variants in the slate/emerald files were **not** changed — they
 already passed (6.9–17.8:1) since Tailwind's default dark-mode palette
@@ -85,6 +88,7 @@ instead of duplicating dialog chrome, which fixes all of the above for
 free and is verified by the four keyboard tests described above.
 
 Additional fixes in the same flow:
+
 - `CampaignDetailPage`'s progress bar had no accessible role/value; added
   `role="progressbar"` with `aria-valuenow`/`aria-valuemin`/`aria-valuemax`/
   `aria-label`.
@@ -110,11 +114,11 @@ Additional fixes in the same flow:
 
 ### 3. Responsive layout at 360px
 
-| Location | Problem | Fix |
-|---|---|---|
-| `DesignFoundationsPage` palette swatch rows | 11 fixed 32px swatches + gaps = ~392px in a non-wrapping flex row, inside a 312px-wide content area at 360px viewport → horizontal overflow | added `flex-wrap` |
-| `Header`'s wallet-connection error panel | `absolute right-6 ... max-w-sm` (384px) could exceed a 360px viewport | now `inset-x-4` (fluid, clamped to viewport minus margin) below the `sm` breakpoint, restoring the original floating position at `sm:` and up |
-| `Header` nav row | no wrap fallback if the logo + connected-wallet chip + disconnect button ever exceeded available width | added `flex-wrap` as a safety margin |
+| Location                                    | Problem                                                                                                                                     | Fix                                                                                                                                           |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DesignFoundationsPage` palette swatch rows | 11 fixed 32px swatches + gaps = ~392px in a non-wrapping flex row, inside a 312px-wide content area at 360px viewport → horizontal overflow | added `flex-wrap`                                                                                                                             |
+| `Header`'s wallet-connection error panel    | `absolute right-6 ... max-w-sm` (384px) could exceed a 360px viewport                                                                       | now `inset-x-4` (fluid, clamped to viewport minus margin) below the `sm` breakpoint, restoring the original floating position at `sm:` and up |
+| `Header` nav row                            | no wrap fallback if the logo + connected-wallet chip + disconnect button ever exceeded available width                                      | added `flex-wrap` as a safety margin                                                                                                          |
 
 Other primary pages (`AnalyticsDashboardPage`, `CreateCampaignPage`,
 `CampaignDetailPage`, `InvestorDashboardPage`, `InvestmentCard`) were
@@ -125,29 +129,57 @@ changes were needed there.
 ### 4. Automated regression test
 
 `src/__tests__/accessibility.test.tsx` adds:
+
 - 4 `jest-axe` scans (DOM/ARIA structural checks) across the audited routes
   and the funding modal.
 - 4 keyboard-navigation tests for the funding flow (dialog focus, Tab trap,
   Escape-to-close, error announcement).
 
+`src/__tests__/dispute-accessibility.test.tsx` adds the same guarantee for
+the dispute-resolution flow (see §5).
+
 Run with `npm test` (Vitest). This gives the "no critical/serious
 violations" acceptance criterion a repeatable, CI-checkable guarantee for
 these routes going forward, rather than a one-time manual claim.
 
-## Explicit follow-up (not blocking this issue)
+### 5. Dispute-resolution flow (follow-up closed)
 
-**Dispute resolution has no UI yet.** A repo-wide search turned up
-`open_dispute`/`resolve_dispute` contract calls and an unused
-`useOpenDispute` hook, but no page or component renders a dispute-resolution
-flow anywhere in the client. There is nothing to keyboard-test because it
-doesn't exist yet — this acceptance criterion can only be verified once
-that flow is built (tracked separately; per issue #65's own guidance to
-"document any [issues] that need a follow-up rather than blocking this
-issue indefinitely").
+The original audit deferred keyboard/screen-reader verification of
+dispute resolution because the UI did not exist yet. `OpenDisputeForm`
+and `ResolveDisputeForm` (rendered by `CampaignAdminPanel` when the
+campaign status is `Disputed`) now meet the same bar as the funding
+flow.
+
+Findings and fixes:
+
+| Location                                                                             | Problem                                                                                                               | Fix                                                                                                                                                                                                                    |
+| ------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ActionError` in `CampaignAdminPanel` (and the matching helper in `OpenDisputeForm`) | Validation and contract errors rendered as a silent `<p>` — not a live region, so assistive tech never announced them | `role="alert"` plus a stable `id` so the message is announced and can be referenced from the field                                                                                                                     |
+| `OpenDisputeForm` reason textarea / `ResolveDisputeForm` payout input                | Errors were visual only; fields had no `aria-invalid` / `aria-describedby`                                            | Empty-reason and out-of-range payout errors now set `aria-invalid` and point `aria-describedby` at the alert (payout also keeps its range hint)                                                                        |
+| Success copy on both forms                                                           | "Dispute opened." / "Dispute resolved." was visual-only                                                               | `role="status"` (polite live region)                                                                                                                                                                                   |
+| Labels, hints, and supporting copy                                                   | `text-soil-500` (4.10:1) and `text-soil-400` (2.98:1) on white                                                        | bumped to `text-soil-600` (≥ 5.96:1), matching the rest of the audited soil palette                                                                                                                                    |
+| Keyboard operability                                                                 | Native `<form>` controls, but no automated proof                                                                      | Tab order is reason → submit (open) and resolution → payout → submit (resolve, PartialSettlement). Enter submits (native form submit; payout is a single-line input). Submit buttons already had `focus-visible` rings |
+
+Automated coverage in `src/__tests__/dispute-accessibility.test.tsx`:
+
+- 2 `jest-axe` scans (`OpenDisputeForm`, `Disputed` `CampaignAdminPanel`)
+- 6 keyboard tests (Tab order, Enter-to-submit error announcement with
+  `role="alert"` / `aria-invalid` / `aria-describedby`, and success
+  announcement via `role="status"`) — all without simulating a mouse
+
+Both forms are inline (not dialogs), so the funding flow's focus-trap /
+Escape-to-close checks do not apply; the analogue is Tab order through
+the fields plus Enter-to-submit.
+
+Out of scope for this pass (tracked separately): a duplicate-dispute
+guard that hides `OpenDisputeForm` when a dispute is already open.
+
+## Explicit follow-up (not blocking this issue)
 
 Two smaller items are noted but intentionally not fixed here, to keep this
 PR scoped to accessibility/responsive behavior rather than expanding into
 unrelated feature or architecture work:
+
 - `CreateCampaignPage`/`CampaignDetailPage`/`FundCampaignModal` aren't wired
   into `App.tsx`'s router yet (a pre-existing gap, not introduced by this
   PR) — their accessibility was verified by rendering them directly in

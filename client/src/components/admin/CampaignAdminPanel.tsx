@@ -23,15 +23,19 @@ const cardClass =
 const primaryButtonClass =
   'inline-flex items-center justify-center rounded-lg bg-leaf-700 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-leaf-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-leaf-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50';
 const secondaryButtonClass =
-  'inline-flex items-center justify-center rounded-lg border border-soil-300 px-4 py-2 text-sm font-semibold text-soil-700 transition-colors hover:bg-soil-50 disabled:cursor-not-allowed disabled:opacity-50';
+  'inline-flex items-center justify-center rounded-lg border border-soil-300 px-4 py-2 text-sm font-semibold text-soil-700 transition-colors hover:bg-soil-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-leaf-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50';
 const dangerButtonClass =
   'inline-flex items-center justify-center rounded-lg bg-status-failed-dark px-4 py-2 text-sm font-semibold text-white transition-colors hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-status-failed focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50';
 const inputClass =
   'w-full rounded-lg border border-soil-300 px-3 py-2 text-body-sm text-soil-900 focus:border-leaf-500 focus:outline-none focus:ring-1 focus:ring-leaf-500';
-const labelClass = 'mb-1 block text-label text-soil-500';
+const labelClass = 'mb-1 block text-label text-soil-600';
 const errorClass = 'mt-1 text-caption text-status-failed-dark';
-const hintClass = 'mt-1 text-caption text-soil-400';
+const hintClass = 'mt-1 text-caption text-soil-600';
 const sectionTitleClass = 'text-h4 text-soil-900';
+
+const RESOLVE_DISPUTE_HEADING_ID = 'resolve-dispute-heading';
+const RESOLVE_DISPUTE_ERROR_ID = 'resolve-dispute-error';
+const DISPUTE_PAYOUT_HINT_ID = 'dispute-payout-hint';
 
 /** Funds still held in escrow — mirrors `escrow_held` in the contract. */
 function escrowHeld(campaign: AdminCampaignOverview['campaign']): bigint {
@@ -56,9 +60,13 @@ function isValidAddress(value: string): boolean {
   return StrKey.isValidEd25519PublicKey(value) || StrKey.isValidContract(value);
 }
 
-function ActionError({ message }: { message: string | null }) {
+function ActionError({ message, id }: { message: string | null; id?: string }) {
   if (!message) return null;
-  return <p className={errorClass}>{message}</p>;
+  return (
+    <p id={id} role="alert" className={errorClass}>
+      {message}
+    </p>
+  );
 }
 
 // ─── Configure tranches ──────────────────────────────────────────────────────
@@ -357,10 +365,24 @@ function ResolveDisputeForm({
     }
   }
 
+  const payoutDescribedBy = [
+    DISPUTE_PAYOUT_HINT_ID,
+    formError ? RESOLVE_DISPUTE_ERROR_ID : null,
+  ]
+    .filter(Boolean)
+    .join(' ');
+
   return (
-    <form onSubmit={handleSubmit} className="space-y-3">
-      <h3 className={sectionTitleClass}>Resolve dispute</h3>
-      <p className="text-body-sm text-soil-500">
+    <form
+      onSubmit={handleSubmit}
+      className="space-y-3"
+      aria-labelledby={RESOLVE_DISPUTE_HEADING_ID}
+      noValidate
+    >
+      <h3 id={RESOLVE_DISPUTE_HEADING_ID} className={sectionTitleClass}>
+        Resolve dispute
+      </h3>
+      <p className="text-body-sm text-soil-600">
         Escrow held: {heldAmount.toString()} (contract units)
       </p>
       <div>
@@ -394,8 +416,11 @@ function ResolveDisputeForm({
             value={payoutAmount}
             onChange={(e) => setPayoutAmount(e.target.value)}
             placeholder="1000"
+            aria-required="true"
+            aria-invalid={!!formError}
+            aria-describedby={payoutDescribedBy}
           />
-          <p className={hintClass}>
+          <p id={DISPUTE_PAYOUT_HINT_ID} className={hintClass}>
             Must be greater than zero and less than {heldAmount.toString()}.
           </p>
         </div>
@@ -407,9 +432,9 @@ function ResolveDisputeForm({
       >
         {resolveDispute.isPending ? 'Confirm in wallet…' : 'Resolve dispute'}
       </button>
-      <ActionError message={formError} />
+      <ActionError message={formError} id={RESOLVE_DISPUTE_ERROR_ID} />
       {success && (
-        <p className="text-caption text-status-active-dark">
+        <p role="status" className="text-caption text-status-active-dark">
           Dispute resolved.
         </p>
       )}
