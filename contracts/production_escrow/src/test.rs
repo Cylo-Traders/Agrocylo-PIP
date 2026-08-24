@@ -2,7 +2,7 @@
 
 use super::*;
 use soroban_sdk::{
-    testutils::{Address as _, Events},
+    testutils::{storage::Persistent as _, Address as _, Events, Ledger},
     token::{Client as TokenClient, StellarAssetClient},
     Address, Env, IntoVal, Symbol, Vec,
 };
@@ -1642,4 +1642,133 @@ fn test_get_admin_returns_initialized_admin() {
 
     let stored_admin = client.get_admin();
     assert_eq!(stored_admin, admin);
+}
+
+// ─── touch_campaign / TTL keep-alive ─────────────────────────────────────────
+
+fn persistent_ttl(env: &Env, contract: &Address, key: &DataKey) -> u32 {
+    env.as_contract(contract, || env.storage().persistent().get_ttl(key))
+}
+
+/// Advance the ledger far enough that remaining persistent TTL falls below
+/// `PERSISTENT_LIFETIME_THRESHOLD`, so the next `extend_ttl` actually bumps.
+fn expire_persistent_ttl_below_threshold(env: &Env) {
+    let delta =
+        crate::storage::PERSISTENT_BUMP_AMOUNT - crate::storage::PERSISTENT_LIFETIME_THRESHOLD + 1;
+    env.ledger().with_mut(|li| {
+        li.sequence_number += delta;
+    });
+}
+
+#[test]
+fn test_touch_campaign_extends_ttl_without_state_change() {
+    let s = token_funded_campaign();
+    let key = DataKey::Campaign(s.campaign_id);
+    let before = s.client.get_campaign(&s.campaign_id).unwrap();
+
+    assert_eq!(
+        persistent_ttl(&s.env, &s.client.address, &key),
+        crate::storage::PERSISTENT_BUMP_AMOUNT
+    );
+
+    expire_persistent_ttl_below_threshold(&s.env);
+    let ttl_before_touch = persistent_ttl(&s.env, &s.client.address, &key);
+    assert!(ttl_before_touch < crate::storage::PERSISTENT_LIFETIME_THRESHOLD);
+
+    s.client.touch_campaign(&s.campaign_id);
+
+    assert_eq!(
+        persistent_ttl(&s.env, &s.client.address, &key),
+        crate::storage::PERSISTENT_BUMP_AMOUNT
+    );
+    assert_eq!(s.client.get_campaign(&s.campaign_id).unwrap(), before);
+}
+
+#[test]
+fn test_touch_campaign_bumps_related_terminal_keys() {
+    let s = token_funded_campaign();
+    let mut tranches: Vec<Tranche> = Vec::new(&s.env);
+    tranches.push_back(make_tranche(&s.env, 500, "planting"));
+    tranches.push_back(make_tranche(&s.env, 500, "harvest"));
+    s.client.configure_tranches(&s.campaign_id, &tranches);
+    s.client
+        .report_harvest(&s.campaign_id, &s.farmer, &Symbol::new(&s.env, "ok"));
+    s.client.settle_campaign(&s.campaign_id, &s.farmer, &400i128);
+
+    let campaign_key = DataKey::Campaign(s.campaign_id);
+    let harvest_key = DataKey::HarvestRecord(s.campaign_id);
+    let tranches_key = DataKey::Tranches(s.campaign_id);
+
+    expire_persistent_ttl_below_threshold(&s.env);
+    assert!(
+        persistent_ttl(&s.env, &s.client.address, &campaign_key)
+            < crate::storage::PERSISTENT_LIFETIME_THRESHOLD
+    );
+    assert!(
+        persistent_ttl(&s.env, &s.client.address, &harvest_key)
+            < crate::storage::PERSISTENT_LIFETIME_THRESHOLD
+    );
+    assert!(
+        persistent_ttl(&s.env, &s.client.address, &tranches_key)
+            < crate::storage::PERSISTENT_LIFETIME_THRESHOLD
+    );
+
+    s.client.touch_campaign(&s.campaign_id);
+
+    assert_eq!(
+        persistent_ttl(&s.env, &s.client.address, &campaign_key),
+        crate::storage::PERSISTENT_BUMP_AMOUNT
+    );
+    assert_eq!(
+        persistent_ttl(&s.env, &s.client.address, &harvest_key),
+        crate::storage::PERSISTENT_BUMP_AMOUNT
+    );
+    assert_eq!(
+        persistent_ttl(&s.env, &s.client.address, &tranches_key),
+        crate::storage::PERSISTENT_BUMP_AMOUNT
+    );
+    assert_eq!(
+        s.client.get_campaign(&s.campaign_id).unwrap().status,
+        CampaignStatus::Settled
+    );
+}
+
+#[test]
+fn test_touch_campaign_bumps_dispute_key() {
+    let s = funded_campaign();
+    s.client.open_dispute(
+        &s.campaign_id,
+        &s.investor1,
+        &Symbol::new(&s.env, "Delay"),
+    );
+    s.client
+        .resolve_dispute(&s.campaign_id, &DisputeResolution::FullRefund, &0i128);
+
+    let dispute_key = DataKey::Dispute(s.campaign_id);
+    expire_persistent_ttl_below_threshold(&s.env);
+    assert!(
+        persistent_ttl(&s.env, &s.client.address, &dispute_key)
+            < crate::storage::PERSISTENT_LIFETIME_THRESHOLD
+    );
+
+    s.client.touch_campaign(&s.campaign_id);
+
+    assert_eq!(
+        persistent_ttl(&s.env, &s.client.address, &dispute_key),
+        crate::storage::PERSISTENT_BUMP_AMOUNT
+    );
+    let campaign = s.client.get_campaign(&s.campaign_id).unwrap();
+    assert_eq!(campaign.status, CampaignStatus::Resolved);
+}
+
+#[test]
+#[should_panic(expected = "campaign not found (missing or archived")]
+fn test_touch_campaign_missing_panics() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, ProductionEscrowContract);
+    let client = ProductionEscrowContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+    client.touch_campaign(&999u64);
 }

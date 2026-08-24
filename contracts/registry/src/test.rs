@@ -1,6 +1,6 @@
-use crate::{ActivityAction, CampaignStatus, RegistryContract, RegistryContractClient};
+use crate::{ActivityAction, CampaignStatus, DataKey, RegistryContract, RegistryContractClient};
 use soroban_sdk::{
-    testutils::{Address as _, Events, Ledger, MockAuth, MockAuthInvoke},
+    testutils::{storage::Persistent as _, Address as _, Events, Ledger, MockAuth, MockAuthInvoke},
     vec, Address, Env, IntoVal, String, Symbol,
 };
 
@@ -863,4 +863,149 @@ fn test_farmer_campaigns_paginate_across_multiple_pages() {
     for i in 0..total {
         assert_eq!(campaigns.get(i).unwrap(), i as u64);
     }
+}
+
+// ─── touch_campaign / TTL keep-alive ─────────────────────────────────────────
+
+fn persistent_ttl(env: &Env, contract: &Address, key: &DataKey) -> u32 {
+    env.as_contract(contract, || env.storage().persistent().get_ttl(key))
+}
+
+fn expire_persistent_ttl_below_threshold(env: &Env) {
+    let delta =
+        crate::storage::PERSISTENT_BUMP_AMOUNT - crate::storage::PERSISTENT_LIFETIME_THRESHOLD + 1;
+    env.ledger().with_mut(|li| {
+        li.sequence_number += delta;
+    });
+}
+
+#[test]
+fn test_touch_campaign_extends_ttl_without_state_change() {
+    let (env, admin, user, _, client) = create_test_env();
+    client.initialize(&admin);
+
+    let campaign_id = 1u64;
+    let title = String::from_str(&env, "Coffee Farm");
+    let description = String::from_str(&env, "High-quality arabica coffee");
+    client.register_campaign(&campaign_id, &user, &title, &description);
+
+    let before = client.get_campaign(&campaign_id).unwrap();
+    let key = DataKey::Campaign(campaign_id);
+    assert_eq!(
+        persistent_ttl(&env, &client.address, &key),
+        crate::storage::PERSISTENT_BUMP_AMOUNT
+    );
+
+    expire_persistent_ttl_below_threshold(&env);
+    assert!(
+        persistent_ttl(&env, &client.address, &key) < crate::storage::PERSISTENT_LIFETIME_THRESHOLD
+    );
+
+    client.touch_campaign(&campaign_id);
+
+    assert_eq!(
+        persistent_ttl(&env, &client.address, &key),
+        crate::storage::PERSISTENT_BUMP_AMOUNT
+    );
+    assert_eq!(client.get_campaign(&campaign_id).unwrap(), before);
+}
+
+#[test]
+fn test_touch_campaign_bumps_record_and_activity_pages() {
+    let (env, admin, user, escrow, client) = create_test_env();
+    client.initialize(&admin);
+
+    let campaign_id = 1u64;
+    client.register_campaign(
+        &campaign_id,
+        &user,
+        &String::from_str(&env, "Coffee Farm"),
+        &String::from_str(&env, "Arabica"),
+    );
+    client.link_campaign_escrow(
+        &campaign_id,
+        &user,
+        &escrow,
+        &Symbol::new(&env, "coffee"),
+        &Symbol::new(&env, "highlands"),
+    );
+    client.update_campaign_status(&campaign_id, &admin, &CampaignStatus::Settled);
+    client.record_activity(&campaign_id, &admin, &ActivityAction::CampaignSettled);
+
+    let campaign_key = DataKey::Campaign(campaign_id);
+    let record_key = DataKey::CampaignRecord(campaign_id);
+    let count_key = DataKey::CampaignActivitiesPageCount(campaign_id);
+    let page_key = DataKey::CampaignActivitiesPage(campaign_id, 0);
+
+    expire_persistent_ttl_below_threshold(&env);
+    assert!(
+        persistent_ttl(&env, &client.address, &campaign_key)
+            < crate::storage::PERSISTENT_LIFETIME_THRESHOLD
+    );
+    assert!(
+        persistent_ttl(&env, &client.address, &record_key)
+            < crate::storage::PERSISTENT_LIFETIME_THRESHOLD
+    );
+    assert!(
+        persistent_ttl(&env, &client.address, &count_key)
+            < crate::storage::PERSISTENT_LIFETIME_THRESHOLD
+    );
+    assert!(
+        persistent_ttl(&env, &client.address, &page_key)
+            < crate::storage::PERSISTENT_LIFETIME_THRESHOLD
+    );
+
+    client.touch_campaign(&campaign_id);
+
+    assert_eq!(
+        persistent_ttl(&env, &client.address, &campaign_key),
+        crate::storage::PERSISTENT_BUMP_AMOUNT
+    );
+    assert_eq!(
+        persistent_ttl(&env, &client.address, &record_key),
+        crate::storage::PERSISTENT_BUMP_AMOUNT
+    );
+    assert_eq!(
+        persistent_ttl(&env, &client.address, &count_key),
+        crate::storage::PERSISTENT_BUMP_AMOUNT
+    );
+    assert_eq!(
+        persistent_ttl(&env, &client.address, &page_key),
+        crate::storage::PERSISTENT_BUMP_AMOUNT
+    );
+    assert_eq!(
+        client.get_campaign_record(&campaign_id).unwrap().status,
+        CampaignStatus::Settled
+    );
+}
+
+#[test]
+fn test_touch_campaign_linked_record_only() {
+    let (env, admin, user, escrow, client) = create_test_env();
+    client.initialize(&admin);
+
+    let campaign_id = 1u64;
+    client.link_campaign_escrow(
+        &campaign_id,
+        &user,
+        &escrow,
+        &Symbol::new(&env, "coffee"),
+        &Symbol::new(&env, "highlands"),
+    );
+
+    expire_persistent_ttl_below_threshold(&env);
+    client.touch_campaign(&campaign_id);
+
+    assert_eq!(
+        persistent_ttl(&env, &client.address, &DataKey::CampaignRecord(campaign_id)),
+        crate::storage::PERSISTENT_BUMP_AMOUNT
+    );
+}
+
+#[test]
+#[should_panic(expected = "campaign not found (missing or archived")]
+fn test_touch_campaign_missing_panics() {
+    let (_env, admin, _, _, client) = create_test_env();
+    client.initialize(&admin);
+    client.touch_campaign(&999u64);
 }

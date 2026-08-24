@@ -45,7 +45,8 @@ Alternative terminal states:
 | `settle_campaign`   | Settle campaign and distribute funds            |
 | `mark_failed`       | Mark campaign as failed, trigger refunds        |
 | `open_dispute`      | Enter dispute state                             |
-| `get_campaign`      | Retrieve campaign details                       |
+| `get_campaign`      | Retrieve campaign details (`Option`)            |
+| `touch_campaign`    | Permissionless TTL keep-alive (no state change) |
 
 ## Trust model: `receive_contribution`
 
@@ -86,6 +87,66 @@ credited for those tokens. The safeguards above are designed to prevent a
 to fully eliminate risk from a two-party collusion. Integrators relying on
 `receive_contribution` should treat `ContribReconciled` events as requiring
 off-chain audit, separate from ordinary `ContribReceived` deposit monitoring.
+
+## TTL, archival, and historical reads
+
+Soroban persistent entries are **not immortal**. Each write (and some reads)
+calls `extend_ttl` with:
+
+| Constant | Value | Meaning |
+|----------|-------|---------|
+| `PERSISTENT_LIFETIME_THRESHOLD` | `DAY_IN_LEDGERS * 30` (518,400 ledgers, ~30 days) | Remaining TTL must fall below this before a bump happens |
+| `PERSISTENT_BUMP_AMOUNT` | `DAY_IN_LEDGERS * 90` (1,555,200 ledgers, ~90 days) | Target remaining TTL after a bump |
+
+(`DAY_IN_LEDGERS` is 17,280, ~5 seconds per ledger.) Instance storage uses the
+same 30/90-day window.
+
+### Which entries stop being written once a campaign is terminal
+
+A campaign is terminal in `Settled`, `Failed`, or `Resolved` (and `Disputed`
+blocks further tranche releases). After the last mutating call:
+
+| Key | Last writer | Still bumped on read? |
+|-----|-------------|------------------------|
+| `DataKey::Campaign(id)` | `settle_campaign` / `mark_failed` / `resolve_dispute` | Yes — `get_campaign` |
+| `DataKey::Dispute(id)` | `resolve_dispute` | Yes — `get_dispute` |
+| `DataKey::HarvestRecord(id)` | `report_harvest` | Yes — `get_harvest_record` |
+| `DataKey::Tranches(id)` | `configure_tranches` / `release_tranche` | **No** — `get_tranches` does not extend TTL |
+| `DataKey::Contribution(id, investor)` | `claim_refund` / `claim_return` (zeros the slot) | Yes — `get_contribution` for that investor |
+
+If nobody reads or writes an entry, its TTL runs out. An archived persistent
+entry is unreadable until restored; public getters return `Option` for a
+**missing** live key (`None`), but an **archived** key fails at the host.
+Mutating methods that require the campaign (`require_campaign`) panic with a
+message that points at restore / `touch_campaign`.
+
+`touch_campaign` does **not** enumerate per-investor `Contribution` keys
+(there is no on-chain investor index). Keep those alive by reading
+`get_contribution` for known investors, or restore them with
+`RestoreFootprintOp` if they archive.
+
+### Keep-alive: `touch_campaign`
+
+```
+touch_campaign(campaign_id)
+```
+
+Permissionless. Extends TTL on `Campaign` and, when present, `Dispute`,
+`Tranches`, and `HarvestRecord`, plus the contract instance. It does not
+change any stored value.
+
+**Suggested indexer cadence:** call `touch_campaign` at least once every ~30
+days for every campaign whose history must stay readable. `extend_ttl` is a
+no-op while remaining TTL is still above the 30-day threshold, so monthly
+calls are cheap and will bump once remaining life drops below the threshold
+(~60 days after the last bump).
+
+### Restore path
+
+If an entry has already archived, `touch_campaign` cannot revive it. Submit a
+[`RestoreFootprintOp`](https://developers.stellar.org/docs/learn/fundamentals/contract-development/storage/state-archival)
+for the archived keys (and the contract instance / WASM if those archived too),
+then resume periodic `touch_campaign` calls.
 
 ## Building
 
