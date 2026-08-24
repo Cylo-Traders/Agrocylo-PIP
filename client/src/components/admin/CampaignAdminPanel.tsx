@@ -9,6 +9,7 @@ import {
   useResolveDispute,
   useSettleCampaign,
   useMarkFailed,
+  useTranches,
 } from '../../hooks/contract';
 import { toUserFacingError } from '../../lib/soroban/userFacingError';
 import {
@@ -16,7 +17,7 @@ import {
   isValidContractSymbol,
 } from '../../lib/soroban/symbol';
 import type { AdminCampaignOverview } from '../../hooks/useAdminCampaigns';
-import type { DisputeResolutionTag } from '../../lib/soroban/types';
+import type { DisputeResolutionTag, Tranche } from '../../lib/soroban/types';
 
 const cardClass =
   'rounded-campaign border border-soil-200 bg-white p-6 shadow-campaign';
@@ -68,6 +69,48 @@ interface TrancheRow {
   milestone: string;
 }
 
+function ConfiguredTranchesList({ tranches }: { tranches: Tranche[] }) {
+  if (tranches.length === 0) return null;
+  return (
+    <div
+      className="overflow-x-auto rounded-lg border border-soil-200"
+      data-testid="configured-tranches-list"
+    >
+      <table className="min-w-full text-left text-body-sm">
+        <thead className="bg-soil-50 text-caption uppercase text-soil-500">
+          <tr>
+            <th className="px-3 py-2 font-medium">#</th>
+            <th className="px-3 py-2 font-medium">Milestone</th>
+            <th className="px-3 py-2 font-medium">Amount</th>
+            <th className="px-3 py-2 font-medium">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {tranches.map((t, i) => (
+            <tr
+              key={`${t.milestone}-${t.amount.toString()}-${i}`}
+              className="border-t border-soil-100"
+            >
+              <td className="px-3 py-2 text-soil-500">{i + 1}</td>
+              <td className="px-3 py-2 font-mono text-soil-800">{t.milestone}</td>
+              <td className="px-3 py-2 font-semibold text-soil-900">
+                {t.amount.toString()}
+              </td>
+              <td className="px-3 py-2">
+                {t.released ? (
+                  <span className="text-status-active-dark">Released</span>
+                ) : (
+                  <span className="text-soil-500">Pending</span>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function ConfigureTranchesForm({
   campaignId,
   totalFunded,
@@ -76,11 +119,18 @@ function ConfigureTranchesForm({
   totalFunded: bigint;
 }) {
   const configureTranches = useConfigureTranches();
+  const tranchesQuery = useTranches(campaignId);
   const [rows, setRows] = useState<TrancheRow[]>([
     { amount: '', milestone: '' },
   ]);
   const [formError, setFormError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+
+  const runningSum = rows.reduce((acc, row) => {
+    const amount = parseWholeAmount(row.amount);
+    return amount !== null ? acc + amount : acc;
+  }, 0n);
+  const overBudget = runningSum > totalFunded;
 
   function updateRow(index: number, patch: Partial<TrancheRow>) {
     setRows((prev) =>
@@ -112,7 +162,7 @@ function ConfigureTranchesForm({
       parsed.push({ amount, milestone: row.milestone });
     }
     if (sum > totalFunded) {
-      return 'Total tranche amounts exceed the funded amount.';
+      return `Total tranche amounts (${sum.toString()}) exceed the funded amount (${totalFunded.toString()}).`;
     }
     return parsed;
   }
@@ -135,75 +185,107 @@ function ConfigureTranchesForm({
     }
   }
 
+  const onChainTranches = tranchesQuery.data ?? [];
+
   return (
-    <form onSubmit={handleSubmit} className="space-y-3">
-      <h3 className={sectionTitleClass}>Configure tranches</h3>
-      <p className="text-body-sm text-soil-500">
-        Funded total: {totalFunded.toString()} (contract units)
-      </p>
-      {rows.map((row, index) => (
-        <div key={index} className="flex items-end gap-2">
-          <div className="flex-1">
-            <label className={labelClass} htmlFor={`tranche-amount-${index}`}>
-              Amount
-            </label>
-            <input
-              id={`tranche-amount-${index}`}
-              className={inputClass}
-              inputMode="numeric"
-              value={row.amount}
-              onChange={(e) => updateRow(index, { amount: e.target.value })}
-              placeholder="10000"
-            />
-          </div>
-          <div className="flex-1">
-            <label
-              className={labelClass}
-              htmlFor={`tranche-milestone-${index}`}
-            >
-              Milestone
-            </label>
-            <input
-              id={`tranche-milestone-${index}`}
-              className={inputClass}
-              value={row.milestone}
-              onChange={(e) => updateRow(index, { milestone: e.target.value })}
-              placeholder="planting"
-            />
-          </div>
-          {rows.length > 1 && (
-            <button
-              type="button"
-              onClick={() => removeRow(index)}
-              className={`${secondaryButtonClass} mb-0`}
-              aria-label="Remove tranche"
-            >
-              Remove
-            </button>
-          )}
-        </div>
-      ))}
-      <div className="flex items-center justify-between">
-        <button type="button" onClick={addRow} className={secondaryButtonClass}>
-          Add tranche
-        </button>
-        <button
-          type="submit"
-          disabled={configureTranches.isPending}
-          className={primaryButtonClass}
-        >
-          {configureTranches.isPending
-            ? 'Confirm in wallet…'
-            : 'Configure tranches'}
-        </button>
-      </div>
-      <ActionError message={formError} />
-      {success && (
-        <p className="text-caption text-status-active-dark">
-          Tranches configured.
+    <div className="space-y-4">
+      <form onSubmit={handleSubmit} className="space-y-3">
+        <h3 className={sectionTitleClass}>Configure tranches</h3>
+        <p className="text-body-sm text-soil-500">
+          Only available for <strong>Funded</strong> campaigns. Define ordered
+          milestones before releasing funds. Funded total:{' '}
+          <span className="font-semibold text-soil-800">
+            {totalFunded.toString()}
+          </span>{' '}
+          (contract units).
         </p>
+        {rows.map((row, index) => (
+          <div key={index} className="flex items-end gap-2">
+            <div className="flex-1">
+              <label className={labelClass} htmlFor={`tranche-amount-${index}`}>
+                Amount
+              </label>
+              <input
+                id={`tranche-amount-${index}`}
+                className={inputClass}
+                inputMode="numeric"
+                value={row.amount}
+                onChange={(e) => updateRow(index, { amount: e.target.value })}
+                placeholder="10000"
+              />
+            </div>
+            <div className="flex-1">
+              <label
+                className={labelClass}
+                htmlFor={`tranche-milestone-${index}`}
+              >
+                Milestone
+              </label>
+              <input
+                id={`tranche-milestone-${index}`}
+                className={inputClass}
+                value={row.milestone}
+                onChange={(e) =>
+                  updateRow(index, { milestone: e.target.value })
+                }
+                placeholder="planting"
+              />
+            </div>
+            {rows.length > 1 && (
+              <button
+                type="button"
+                onClick={() => removeRow(index)}
+                className={`${secondaryButtonClass} mb-0`}
+                aria-label={`Remove tranche row ${index + 1}`}
+              >
+                Remove
+              </button>
+            )}
+          </div>
+        ))}
+        <p
+          className={`text-caption ${overBudget ? 'text-status-failed-dark' : 'text-soil-500'}`}
+          data-testid="tranche-running-sum"
+        >
+          Running total: {runningSum.toString()} / {totalFunded.toString()}
+          {overBudget ? ' — exceeds funded amount' : ''}
+        </p>
+        <div className="flex items-center justify-between">
+          <button
+            type="button"
+            onClick={addRow}
+            className={secondaryButtonClass}
+          >
+            Add tranche
+          </button>
+          <button
+            type="submit"
+            disabled={configureTranches.isPending || overBudget}
+            className={primaryButtonClass}
+          >
+            {configureTranches.isPending
+              ? 'Confirm in wallet…'
+              : 'Configure tranches'}
+          </button>
+        </div>
+        <ActionError message={formError} />
+        {success && (
+          <p className="text-caption text-status-active-dark">
+            Tranches configured. List below refreshes from the contract.
+          </p>
+        )}
+      </form>
+
+      {tranchesQuery.isLoading && (
+        <p className="text-caption text-soil-400">Loading configured tranches…</p>
       )}
-    </form>
+      {onChainTranches.length > 0 && (
+        <div className="space-y-2">
+          <h4 className="text-label text-soil-600">On-chain tranche list</h4>
+          <ConfiguredTranchesList tranches={onChainTranches} />
+        </div>
+      )}
+    </div>
   );
 }
 
