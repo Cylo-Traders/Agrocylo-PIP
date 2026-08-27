@@ -611,6 +611,23 @@ impl ProductionEscrowContract {
     pub fn get_harvest_record(env: Env, campaign_id: u64) -> Option<HarvestRecord> {
         storage::get_harvest_record(&env, campaign_id)
     }
+
+    /// Permissionless keep-alive that extends the TTL of a campaign's persistent
+    /// storage entries (`Campaign`, `Dispute`, `Tranches`, `HarvestRecord`)
+    /// without reading or changing any state.
+    ///
+    /// Once a campaign reaches a terminal state (`Settled`, `Failed`,
+    /// `Resolved`) no write path touches its entries again, so without periodic
+    /// extension its persistent entries eventually lapse and become archived —
+    /// unreadable until explicitly restored. This method is intended to be
+    /// called on a regular cadence (e.g. by an indexer or keeper job) so that
+    /// settled/historical campaigns remain readable indefinitely. It is a
+    /// no-op for a nonexistent campaign. See the README's "Storage expiry &
+    /// keep-alives" section for the full operational guidance.
+    pub fn touch_campaign(env: Env, campaign_id: u64) {
+        storage::touch_campaign(&env, campaign_id);
+        storage::extend_instance_ttl(&env);
+    }
 }
 
 #[cfg(test)]

@@ -49,6 +49,28 @@ Activity records track important campaign lifecycle events including:
 - Approved contracts can perform registry operations without additional authorization
 - Activity records can be created by admin, approved contracts, or authorized users
 
+**Storage expiry & keep-alives:**
+
+The registry stores per-campaign records (`CampaignInfo`, `CampaignRecord`,
+paged farmer-campaign index entries, and paged activity logs) as Soroban
+**persistent** entries. Persistent entries carry a TTL in ledgers; when the TTL
+lapses an entry is **archived** and unreadable until restored
+(`RestoreFootprintOp`). The registry extends the TTL of every entry it reads or
+writes (see `registry/src/storage.rs`; thresholds/bumps are 30/90 days' worth
+of ledgers), so entries in active use stay alive automatically.
+
+Once a campaign settles or ends, no write path touches its registry records
+again, and they are only kept readable if queried. The registry does **not**
+expose a keep-alive method today (unlike `production_escrow::touch_campaign`);
+to keep historical campaign activity logs and records readable indefinitely,
+an indexer/ops job must either periodically read the affected keys or issue a
+`RestoreFootprintOp` before their TTL lapses. Operators should record the
+`PERSISTENT_LIFETIME_THRESHOLD` / `PERSISTENT_BUMP_AMOUNT` constants in
+`registry/src/storage.rs` (30/90 days) and re-assert read access (or restore)
+at a cadence comfortably shorter than 30 days of ledgers. If an entry has
+already been archived, a keep-alive read cannot resurrect it — it must be
+restored first.
+
 ## Integration
 
 See [INTEGRATION.md](./INTEGRATION.md) for the full integration guide covering:

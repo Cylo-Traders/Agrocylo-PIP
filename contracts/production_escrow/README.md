@@ -31,6 +31,51 @@ Alternative terminal states:
 | `Disputed`    | Dispute initiated, awaiting resolution           |
 | `Resolved`    | Dispute resolved, funds allocated                |
 
+### Storage expiry & keep-alives
+
+All per-campaign records (`Campaign`, `Dispute`, `Tranches`, `HarvestRecord`,
+and each `Contribution`) are stored as Soroban **persistent** entries alongside
+the contract's instance data. Persistent entries carry a TTL (time-to-live) in
+ledgers; when that TTL lapses an entry becomes **archived** and is no longer
+readable until it is explicitly restored (via `RestoreFootprintOp` or an
+on-chain read/extension). The contract extends the TTL of every entry it reads
+or writes (see `storage.rs`, thresholds/bumps are 30/90 days' worth of ledgers),
+so entries that are still actively used are kept alive automatically.
+
+However, once a campaign reaches a terminal state (`Settled`, `Failed`,
+`Resolved`) **no write path ever touches its entries again**, and reads only
+happen if someone queries them. A settled campaign that is queried for the
+first time after its persistent entries' TTL has lapsed will be **archived and
+unreadable** — the public getters return `None` and the state-transition paths
+that assume a campaign exists will panic with `"campaign not found"`. For an
+auditable campaign-history platform, losing read access to completed campaigns
+after a few months is an operational risk that must be actively managed.
+
+**Keep-alive:** `touch_campaign(campaign_id)` is a permissionless, state-free
+method that extends the TTL of a campaign's `Campaign`, `Dispute`, `Tranches`,
+and `HarvestRecord` entries without reading or changing any state. It is
+intended to be called periodically by an indexer or keeper job (e.g. once per
+extension window, well under the 30-day threshold) so that historical —
+especially settled — campaigns remain readable indefinitely. It is a no-op for
+a nonexistent campaign.
+
+**What the operator must do:**
+
+- Record the ledger TTL constants: `PERSISTENT_LIFETIME_THRESHOLD` (30 days'
+  worth of ledgers) and `PERSISTENT_BUMP_AMOUNT` (90 days') in
+  `production_escrow/src/storage.rs`.
+- Run `touch_campaign(campaign_id)` on every campaign you care to keep readable
+  at a cadence comfortably shorter than 30 days of ledgers (e.g. weekly). This
+  keeps the `Campaign`, `Dispute`, `Tranches`, and `HarvestRecord` records
+  alive.
+- `Contribution` records are keyed per-investor and cannot be enumerated by a
+  bulk touch; keep those alive via their ordinary `fund_campaign`/
+  `receive_contribution`/`claim_*` reads, or accept that very old contribution
+  slots may need a targeted restore.
+- If an entry has **already** been archived, `touch_campaign` cannot resurrect
+  it (its `has` is false on-chain); it must be restored first via
+  `RestoreFootprintOp`. Keep-alives are a *prevention*, not a recovery, tool.
+
 ## Public Methods
 
 | Method              | Description                                     |
@@ -45,6 +90,7 @@ Alternative terminal states:
 | `settle_campaign`   | Settle campaign and distribute funds            |
 | `mark_failed`       | Mark campaign as failed, trigger refunds        |
 | `open_dispute`      | Enter dispute state                             |
+| `touch_campaign`    | Permissionless keep-alive: extends TTL of a campaign's persistent storage entries without changing state (see "Storage expiry & keep-alives") |
 | `get_campaign`      | Retrieve campaign details                       |
 
 ## Trust model: `receive_contribution`
