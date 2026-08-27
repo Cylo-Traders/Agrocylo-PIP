@@ -1,4 +1,8 @@
-import { LIFECYCLE_STEPS, lifecycleStepIndex } from '../../lib/campaignStatus';
+import {
+  LIFECYCLE_STEPS,
+  lifecycleStepIndex,
+  type ProductionProgress,
+} from '../../lib/campaignStatus';
 import type { CampaignStatusTag } from '../../lib/soroban/types';
 
 const DERAILED_STATUSES: CampaignStatusTag[] = [
@@ -7,8 +11,18 @@ const DERAILED_STATUSES: CampaignStatusTag[] = [
   'Failed',
 ];
 
-export function LifecycleStepper({ status }: { status: CampaignStatusTag }) {
-  const currentIndex = lifecycleStepIndex(status);
+export function LifecycleStepper({
+  status,
+  tranches,
+  releasedAmount,
+}: {
+  status: CampaignStatusTag;
+  /** Tranche records from `get_tranches` — used to derive in-production. */
+  tranches?: ProductionProgress['tranches'];
+  /** `Campaign.released` — used to derive in-production when tranches aren't loaded. */
+  releasedAmount?: ProductionProgress['releasedAmount'];
+}) {
+  const currentIndex = lifecycleStepIndex(status, { tranches, releasedAmount });
   const derailed = DERAILED_STATUSES.includes(status);
 
   return (

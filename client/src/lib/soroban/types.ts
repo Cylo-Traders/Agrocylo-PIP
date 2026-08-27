@@ -7,18 +7,28 @@
  * Fieldless Rust enums (e.g. `CampaignStatus`) are decoded by the SDK as
  * `{ tag: "Variant" }` rather than a bare string, since soroban_sdk represents
  * them on the wire as unions.
+ *
+ * `CampaignStatusTag` is the on-chain union only — keep it in lockstep with
+ * `contracts/production_escrow/src/types.rs` (`pub enum CampaignStatus`).
+ * UI-only derived states (a Funded campaign that has already released a
+ * tranche presenting as "in production") live in `lib/campaignStatus.ts` and
+ * are not members of this union.
  */
 
-export type CampaignStatusTag =
-  | 'Active'
-  | 'Funding'
-  | 'Funded'
-  | 'InProduction'
-  | 'Harvested'
-  | 'Disputed'
-  | 'Resolved'
-  | 'Settled'
-  | 'Failed';
+/** On-chain `CampaignStatus` variants, in the order defined by the contract. */
+export const ON_CHAIN_CAMPAIGN_STATUS_TAGS = [
+  'Active',
+  'Funding',
+  'Funded',
+  'InProduction',
+  'Harvested',
+  'Disputed',
+  'Resolved',
+  'Settled',
+  'Failed',
+] as const;
+
+export type CampaignStatusTag = (typeof ON_CHAIN_CAMPAIGN_STATUS_TAGS)[number];
 
 export type DisputeStatusTag = 'Open' | 'Resolved';
 
