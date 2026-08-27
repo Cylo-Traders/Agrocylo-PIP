@@ -278,6 +278,69 @@ fn failed_campaign_refund_flow() {
     assert!(escrow_emitted(&h, "RefundClaimed"));
 }
 
+// ─── registry status mirror tracks the escrow's real lifecycle state ────
+
+#[test]
+fn registry_mirror_tracks_harvested_status() {
+    let h = Harness::new();
+    let crop = Symbol::new(&h.env, "maize");
+    let region = Symbol::new(&h.env, "central");
+    h.registry
+        .link_campaign_escrow(&h.campaign_id, &h.farmer, &h.escrow.address, &crop, &region);
+
+    // Drive the escrow to Harvested.
+    h.fund_fully();
+    let outcome = Symbol::new(&h.env, "good_yield");
+    h.escrow.report_harvest(&h.campaign_id, &h.farmer, &outcome);
+    assert_eq!(h.campaign().status, CampaignStatus::Harvested);
+
+    // Orchestrator mirrors the escrow's Harvested state into the registry.
+    h.registry.update_campaign_status(
+        &h.campaign_id,
+        &h.escrow.address,
+        &RegistryCampaignStatus::Harvested,
+    );
+
+    assert_eq!(
+        h.registry
+            .get_campaign_record(&h.campaign_id)
+            .unwrap()
+            .status,
+        RegistryCampaignStatus::Harvested
+    );
+}
+
+#[test]
+fn registry_mirror_tracks_failed_status() {
+    let h = Harness::new();
+    let crop = Symbol::new(&h.env, "maize");
+    let region = Symbol::new(&h.env, "central");
+    h.registry
+        .link_campaign_escrow(&h.campaign_id, &h.farmer, &h.escrow.address, &crop, &region);
+
+    // Partially fund, then the admin marks the campaign failed.
+    h.escrow
+        .fund_campaign(&h.campaign_id, &h.investor1, &600i128);
+    assert_eq!(h.campaign().status, CampaignStatus::Funding);
+    h.escrow.mark_failed(&h.campaign_id);
+    assert_eq!(h.campaign().status, CampaignStatus::Failed);
+
+    // Orchestrator mirrors the escrow's Failed state into the registry.
+    h.registry.update_campaign_status(
+        &h.campaign_id,
+        &h.escrow.address,
+        &RegistryCampaignStatus::Failed,
+    );
+
+    assert_eq!(
+        h.registry
+            .get_campaign_record(&h.campaign_id)
+            .unwrap()
+            .status,
+        RegistryCampaignStatus::Failed
+    );
+}
+
 // ─── disputed campaign resolution flow ──────────────────────────────────
 
 #[test]
