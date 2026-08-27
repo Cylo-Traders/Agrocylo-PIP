@@ -80,6 +80,14 @@ impl ProductionEscrowContract {
         if target_amount <= 0 {
             panic!("target amount must be greater than zero");
         }
+        // The deadline is the closing time for contributions: it must be in the
+        // future at creation time, otherwise the campaign would be immediately
+        // expired and could never be funded. We additionally require it to be
+        // strictly greater than the current timestamp (an equal deadline is a
+        // now-expired deadline).
+        if deadline <= env.ledger().timestamp() {
+            panic!("deadline must be in the future");
+        }
         // Stellar token amounts are bounded by i64::MAX stroops (~9.2 × 10¹⁸).
         // Capping here prevents intermediate overflow in pro-rata arithmetic:
         //   contributed * refundable / total_funded
@@ -126,6 +134,14 @@ impl ProductionEscrowContract {
             .unwrap_or_else(|| panic!("campaign not found"));
         if campaign.status != CampaignStatus::Active && campaign.status != CampaignStatus::Funding {
             panic!("campaign not accepting contributions");
+        }
+        // Once the deadline has passed the campaign no longer accepts
+        // contributions. If the target was reached in time it has already
+        // transitioned to `Funded` (which fails this status check above);
+        // if not, it must first be expired via `expire_campaign` (or failed by
+        // an admin) before funds are refunded.
+        if env.ledger().timestamp() > campaign.deadline {
+            panic!("campaign deadline has passed");
         }
 
         // Transfer tokens from investor into this contract.
@@ -189,6 +205,9 @@ impl ProductionEscrowContract {
 
         if campaign.status != CampaignStatus::Active && campaign.status != CampaignStatus::Funding {
             panic!("campaign not accepting contributions");
+        }
+        if env.ledger().timestamp() > campaign.deadline {
+            panic!("campaign deadline has passed");
         }
 
         let remaining = campaign.target_amount - campaign.total_funded;
@@ -558,7 +577,43 @@ impl ProductionEscrowContract {
         emit_campaign_failed(&env, campaign_id, campaign.refundable);
     }
 
-    /// Investor claims their pro-rata share of investor returns from a Settled campaign.
+    /// Permissionless expiry of an under-funded campaign once its deadline has
+    /// passed. Anyone may call this (no authorization required): if the
+    /// campaign is still `Active`/`Funding` (i.e. the funding target was not
+    /// reached before `deadline`) and the ledger timestamp is past the
+    /// deadline, the campaign transitions to `Failed` and whatever escrowed
+    /// funds it holds become refundable to investors via `claim_refund`.
+    ///
+    /// This is the on-chain counterpart to the `deadline` enforced by
+    /// `fund_campaign`/`receive_contribution`: those keep rejecting late
+    /// contributions, while this provides a permissionless path to move an
+    /// expired, unmet campaign to `Failed` without requiring an admin to call
+    /// `mark_failed`.
+    pub fn expire_campaign(env: Env, campaign_id: u64) {
+        let mut campaign = storage::get_campaign(&env, campaign_id)
+            .unwrap_or_else(|| panic!("campaign not found"));
+        if campaign.status != CampaignStatus::Active && campaign.status != CampaignStatus::Funding {
+            panic!("campaign cannot be expired in its current state");
+        }
+        if env.ledger().timestamp() <= campaign.deadline {
+            panic!("campaign deadline has not yet passed");
+        }
+        // Guard against expiry after funding succeeded: by the time the deadline
+        // passes a funded campaign has already moved to `Funded` and is excluded
+        // by the status check above; this check is belt-and-braces.
+        if campaign.total_funded >= campaign.target_amount {
+            panic!("campaign target was reached; cannot expire");
+        }
+
+        let held = escrow_held(&campaign);
+        campaign.refundable += held;
+        campaign.status = CampaignStatus::Failed;
+        storage::set_campaign(&env, campaign_id, &campaign);
+        storage::extend_instance_ttl(&env);
+
+        emit_campaign_failed(&env, campaign_id, campaign.refundable);
+    }
+
     ///
     /// **Rounding / dust policy:** The pro-rata share is computed via integer
     /// division (`contributed * returnable / total_funded`), which truncates
