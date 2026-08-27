@@ -7,6 +7,7 @@ import { AnalyticsDashboardPage } from './pages/AnalyticsDashboardPage';
 import { AdminDashboardPage } from './pages/AdminDashboardPage';
 import { ActivityFeedPage } from './pages/ActivityFeedPage';
 import { CampaignDetailPage } from './pages/CampaignDetailPage';
+import { FarmerRegistrationPage } from './pages/FarmerRegistrationPage';
 import './App.css';
 
 export default function App() {
@@ -53,6 +54,7 @@ export default function App() {
       <Route element={<AppLayout />}>
         <Route path="/activity" element={<ActivityFeedPage />} />
         <Route path="/campaigns/:id" element={<CampaignDetailPage />} />
+        <Route path="/profile" element={<FarmerRegistrationPage />} />
       </Route>
     </Routes>
   );
