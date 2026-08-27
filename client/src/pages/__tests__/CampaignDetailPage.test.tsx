@@ -60,7 +60,9 @@ describe('CampaignDetailPage', () => {
     } as unknown as ReturnType<typeof useEscrowQueries.useCampaign>);
 
     renderComponent('101');
-    expect(screen.getByTestId('detail-page-skeleton')).toBeInTheDocument();
+    expect(
+      screen.getByRole('status', { name: /loading detail page/i }),
+    ).toBeInTheDocument();
   });
 
   it('renders Campaign Not Found state when query fails or data is missing', () => {
