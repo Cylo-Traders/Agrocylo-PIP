@@ -22,7 +22,6 @@ export default defineConfig({
       '.cache/',
       // Exclude problematic test files from other parts of the project
       'src/__tests__/campaignService.test.ts',
-      'src/__tests__/investorService.test.ts',
       'src/App.test.ts',
     ],
     coverage: {
