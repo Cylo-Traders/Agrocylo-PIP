@@ -1,13 +1,18 @@
 import React, { useState } from 'react';
 import { Modal } from '../ui/Modal/Modal';
-import { useToast } from '../../context/ToastContext';
+import { useWallet } from '../../context/WalletContext';
+import { useFundCampaign } from '../../hooks/contract/useEscrowMutations';
 import {
   validateContribution,
   calculateOwnershipShare,
-  fundCampaign,
-  type FundCampaignResult,
 } from '../../lib/soroban/campaignService';
 import { toUserFacingError } from '../../lib/soroban/userFacingError';
+
+export interface FundCampaignResult {
+  success: boolean;
+  txHash?: string;
+  error?: string;
+}
 
 export interface FundCampaignModalProps {
   isOpen: boolean;
@@ -16,7 +21,6 @@ export interface FundCampaignModalProps {
   campaignTitle: string;
   totalTarget: number;
   currentRaised: number;
-  walletAddress?: string;
   onSuccess?: (result: FundCampaignResult, addedAmount: number) => void;
 }
 
@@ -27,10 +31,11 @@ export const FundCampaignModal: React.FC<FundCampaignModalProps> = ({
   campaignTitle,
   totalTarget,
   currentRaised,
-  walletAddress = 'GDF4...M9XZ',
   onSuccess,
 }) => {
-  const toast = useToast();
+  const { isConnected, publicKey } = useWallet();
+  const fundCampaignMutation = useFundCampaign();
+
   const remainingTarget = Math.max(0, totalTarget - currentRaised);
 
   const [amount, setAmount] = useState<string>('');
@@ -55,6 +60,11 @@ export const FundCampaignModal: React.FC<FundCampaignModalProps> = ({
     e.preventDefault();
     setError(null);
 
+    if (!isConnected || !publicKey) {
+      setError('Wallet must be connected to fund a campaign');
+      return;
+    }
+
     const validation = validateContribution(numAmount, remainingTarget);
     if (!validation.valid) {
       setError(validation.error || 'Invalid contribution amount');
@@ -63,30 +73,25 @@ export const FundCampaignModal: React.FC<FundCampaignModalProps> = ({
 
     setLoading(true);
     try {
-      const res = await fundCampaign(
-        { campaignId, amount: numAmount, walletAddress },
-        currentRaised,
-        totalTarget,
-      );
+      const parsedAmount = BigInt(Math.round(numAmount));
+      await fundCampaignMutation.mutateAsync({
+        campaignId,
+        investor: publicKey,
+        amount: parsedAmount,
+      });
 
-      if (!res.success) {
-        const message = res.error || 'Failed to fund campaign';
-        setError(message);
-        toast.error('Could not fund campaign', message);
-      } else {
-        setSuccessResult(res);
-        toast.success(
-          'Contribution successful',
-          `You funded ${campaignTitle} with $${numAmount.toLocaleString()}.`,
-        );
-        if (onSuccess) {
-          onSuccess(res, numAmount);
-        }
+      const res: FundCampaignResult = {
+        success: true,
+        txHash: 'Confirmed on-chain',
+      };
+
+      setSuccessResult(res);
+      if (onSuccess) {
+        onSuccess(res, numAmount);
       }
     } catch (err) {
       const message = toUserFacingError(err);
       setError(message);
-      toast.error('Could not fund campaign', message);
     } finally {
       setLoading(false);
     }
@@ -136,7 +141,7 @@ export const FundCampaignModal: React.FC<FundCampaignModalProps> = ({
           {successResult.txHash && (
             <div className="rounded-xl bg-slate-50 p-3 text-left dark:bg-slate-800/60">
               <span className="block font-mono text-xs text-slate-600 dark:text-slate-400">
-                Transaction Hash
+                Transaction Status
               </span>
               <span className="break-all font-mono text-xs text-slate-700 dark:text-slate-300">
                 {successResult.txHash}
@@ -157,6 +162,16 @@ export const FundCampaignModal: React.FC<FundCampaignModalProps> = ({
       ) : (
         /* Input Form View */
         <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Wallet disconnection prompt */}
+          {!isConnected && (
+            <div
+              role="status"
+              className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-medium text-amber-800 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-300"
+            >
+              Connect your wallet to fund this campaign.
+            </div>
+          )}
+
           {/* Stats bar */}
           <div className="grid grid-cols-2 gap-3 rounded-xl border border-slate-100 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-800/40">
             <div>
@@ -252,7 +267,7 @@ export const FundCampaignModal: React.FC<FundCampaignModalProps> = ({
             </button>
             <button
               type="submit"
-              disabled={loading || remainingTarget <= 0}
+              disabled={loading || remainingTarget <= 0 || !isConnected}
               className="rounded-xl bg-emerald-700 px-5 py-2.5 font-semibold text-white shadow-sm transition hover:bg-emerald-800 disabled:opacity-50"
             >
               {loading ? 'Confirming...' : 'Confirm Contribution'}
