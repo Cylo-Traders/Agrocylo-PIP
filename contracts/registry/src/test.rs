@@ -736,6 +736,38 @@ fn test_update_campaign_status_as_admin() {
 }
 
 #[test]
+fn test_update_campaign_status_harvested() {
+    let (env, admin, user, escrow, client) = create_test_env();
+    client.initialize(&admin);
+
+    let campaign_id = 1u64;
+    let crop = Symbol::new(&env, "coffee");
+    let region = Symbol::new(&env, "highlands");
+    client.link_campaign_escrow(&campaign_id, &user, &escrow, &crop, &region);
+
+    client.update_campaign_status(&campaign_id, &escrow, &CampaignStatus::Harvested);
+
+    let record = client.get_campaign_record(&campaign_id).unwrap();
+    assert_eq!(record.status, CampaignStatus::Harvested);
+}
+
+#[test]
+fn test_update_campaign_status_failed() {
+    let (env, admin, user, escrow, client) = create_test_env();
+    client.initialize(&admin);
+
+    let campaign_id = 1u64;
+    let crop = Symbol::new(&env, "coffee");
+    let region = Symbol::new(&env, "highlands");
+    client.link_campaign_escrow(&campaign_id, &user, &escrow, &crop, &region);
+
+    client.update_campaign_status(&campaign_id, &escrow, &CampaignStatus::Failed);
+
+    let record = client.get_campaign_record(&campaign_id).unwrap();
+    assert_eq!(record.status, CampaignStatus::Failed);
+}
+
+#[test]
 #[should_panic(expected = "unauthorized: caller is not the registered escrow contract or admin")]
 fn test_update_campaign_status_unauthorized_caller_fails() {
     let (env, admin, user, escrow, client) = create_test_env();
