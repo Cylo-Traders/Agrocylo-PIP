@@ -391,3 +391,86 @@ export function useMarkFailed() {
     onError: notifyError,
   });
 }
+
+export interface ClaimRefundInput {
+  campaignId: string;
+  investor: string;
+}
+
+export function useClaimRefund() {
+  const wallet = useWallet();
+  const queryClient = useQueryClient();
+  const { notifySuccess, notifyError } = useMutationToasts({
+    success: 'Refund claimed',
+    error: 'Could not claim refund',
+  });
+
+  return useMutation({
+    mutationFn: async (input: ClaimRefundInput) => {
+      return invokeContractWrite(
+        getEscrowClient(),
+        'claim_refund',
+        {
+          campaign_id: BigInt(input.campaignId),
+          investor: input.investor,
+        },
+        wallet,
+      );
+    },
+    onSuccess: (_data, input) => {
+      notifySuccess(`Claimed refund for campaign #${input.campaignId}.`);
+      queryClient.invalidateQueries({
+        queryKey: contractQueryKeys.campaign(input.campaignId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: contractQueryKeys.contribution(
+          input.campaignId,
+          input.investor,
+        ),
+      });
+    },
+    onError: notifyError,
+  });
+}
+
+export interface ClaimReturnInput {
+  campaignId: string;
+  investor: string;
+}
+
+export function useClaimReturn() {
+  const wallet = useWallet();
+  const queryClient = useQueryClient();
+  const { notifySuccess, notifyError } = useMutationToasts({
+    success: 'Return claimed',
+    error: 'Could not claim return',
+  });
+
+  return useMutation({
+    mutationFn: async (input: ClaimReturnInput) => {
+      return invokeContractWrite(
+        getEscrowClient(),
+        'claim_return',
+        {
+          campaign_id: BigInt(input.campaignId),
+          investor: input.investor,
+        },
+        wallet,
+      );
+    },
+    onSuccess: (_data, input) => {
+      notifySuccess(`Claimed return payout for campaign #${input.campaignId}.`);
+      queryClient.invalidateQueries({
+        queryKey: contractQueryKeys.campaign(input.campaignId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: contractQueryKeys.contribution(
+          input.campaignId,
+          input.investor,
+        ),
+      });
+    },
+    onError: notifyError,
+  });
+}
+
