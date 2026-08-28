@@ -473,4 +473,3 @@ export function useClaimReturn() {
     onError: notifyError,
   });
 }
-

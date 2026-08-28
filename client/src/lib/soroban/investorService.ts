@@ -1,9 +1,5 @@
 export type CampaignStatus =
-  | 'Active'
-  | 'Funding'
-  | 'Resolved'
-  | 'Failed'
-  | 'Settled';
+  'Active' | 'Funding' | 'Resolved' | 'Failed' | 'Settled';
 
 export interface FundedInvestment {
   campaignId: string;
