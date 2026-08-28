@@ -24,6 +24,13 @@ export class SorobanEventListenerService
   private pollingInterval: NodeJS.Timeout | null = null;
   private lastProcessedLedger = 0;
   private processedEventIds = new Set<string>();
+  // getEvents is capped at 100 events per call; pollEvents pages through
+  // via the RPC's own cursor until a page comes back short. MAX_PAGES bounds
+  // how many round-trips a single poll cycle will make so a pathological
+  // backlog (or a misbehaving RPC endpoint) can't loop forever - see the
+  // cap-handling branch in pollEvents() for what happens when it's hit.
+  private static readonly EVENTS_PAGE_LIMIT = 100;
+  private static readonly MAX_PAGES_PER_POLL = 50;
   /**
    * Wall-clock timestamp (ms) of the last poll cycle that completed without
    * throwing — used by IndexerHealthIndicator to detect a stalled indexer.
@@ -178,23 +185,72 @@ export class SorobanEventListenerService
       const latestLedger = await this.rpcServer.getLatestLedger();
       const startLedger = this.lastProcessedLedger + 1;
       if (startLedger > latestLedger.sequence) return;
-      const response = await this.rpcServer.getEvents({
-        startLedger,
-        filters: contractIds.map((contractId) => ({
-          type: 'contract',
-          contractIds: [contractId],
-        })),
-        limit: 100,
-      });
-      if (response.events?.length > 0) {
-        for (const event of response.events) {
+
+      const filters = contractIds.map((contractId) => ({
+        type: 'contract',
+        contractIds: [contractId],
+      }));
+
+      let cursor: string | undefined;
+      let lastEventLedgerSeen: number | null = null;
+      let drainedAllPages = false;
+
+      for (
+        let page = 0;
+        page < SorobanEventListenerService.MAX_PAGES_PER_POLL;
+        page += 1
+      ) {
+        const response = await this.rpcServer.getEvents({
+          ...(cursor ? { cursor } : { startLedger }),
+          filters,
+          limit: SorobanEventListenerService.EVENTS_PAGE_LIMIT,
+        });
+
+        const events = response.events ?? [];
+        for (const event of events) {
           if (!this.processedEventIds.has(event.id)) {
             this.processedEventIds.add(event.id);
             await this.processEvent(event);
           }
         }
+        if (events.length > 0) {
+          lastEventLedgerSeen = events[events.length - 1].ledger;
+        }
+
+        if (
+          !response.cursor ||
+          events.length < SorobanEventListenerService.EVENTS_PAGE_LIMIT
+        ) {
+          drainedAllPages = true;
+          break;
+        }
+        cursor = response.cursor;
       }
-      this.lastProcessedLedger = latestLedger.sequence;
+
+      if (drainedAllPages) {
+        this.lastProcessedLedger = latestLedger.sequence;
+      } else if (lastEventLedgerSeen !== null) {
+        // Hit the safety cap with more pages left to fetch. getEvents
+        // returns events in ascending ledger order, so every ledger
+        // strictly before the last one we saw is guaranteed fully
+        // processed - but that last ledger itself may have more events
+        // sitting on a page we never fetched. Back off by one so the next
+        // poll re-fetches that ledger instead of silently skipping past it
+        // (in-memory dedup means already-processed events on it won't be
+        // reprocessed).
+        this.logger.error(
+          {
+            contractIds,
+            pagesFetched: SorobanEventListenerService.MAX_PAGES_PER_POLL,
+            resumingFromLedger: lastEventLedgerSeen,
+          },
+          'Soroban event poll hit the per-cycle page safety cap; deferring the remainder to the next poll instead of advancing the cursor past unfetched events',
+        );
+        this.lastProcessedLedger = lastEventLedgerSeen - 1;
+      }
+      // If the cap was hit on the very first page with zero events somehow
+      // reported, leave lastProcessedLedger untouched rather than guess.
+
       await this.persistCursor(contractIds, this.lastProcessedLedger);
       this.lastSuccessfulPollAt = Date.now();
     } catch (error) {
