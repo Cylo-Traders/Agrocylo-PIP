@@ -43,6 +43,20 @@ export const SUBSCRIBE_ACTIVITY = 'subscribe:activity';
 /** Client -> server: leave the activity feed room. */
 export const UNSUBSCRIBE_ACTIVITY = 'unsubscribe:activity';
 
+/**
+ * Client -> server: join the caller's private notification room. Requires a
+ * valid auth token (see server README / `.env.example`) whose `scopes`
+ * include `notifications:read`; the room is always the token's own `sub`, so
+ * one principal cannot subscribe to another's stream.
+ */
+export const SUBSCRIBE_NOTIFICATIONS = 'subscribe:notifications';
+/** Client -> server: leave the private notification room. */
+export const UNSUBSCRIBE_NOTIFICATIONS = 'unsubscribe:notifications';
+/** Scope required to subscribe to a private notification room. */
+export const NOTIFICATIONS_READ_SCOPE = 'notifications:read';
+
 export const campaignRoom = (campaignId: string): string =>
   `campaign:${campaignId}`;
 export const ACTIVITY_ROOM = 'activity';
+export const notificationsRoom = (subject: string): string =>
+  `notifications:${subject}`;

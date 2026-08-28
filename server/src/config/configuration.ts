@@ -9,6 +9,15 @@ export interface AppConfig {
   corsAllowedOrigins: string[];
 }
 
+export interface WsConfig {
+  /**
+   * Shared secret used to verify HS256 auth tokens on private WebSocket
+   * channels. Empty string means private channels are disabled (fail closed);
+   * public campaign/activity streams stay open regardless.
+   */
+  authSecret: string;
+}
+
 export interface ThrottleConfig {
   ttlMs: number;
   limit: number;
@@ -31,6 +40,7 @@ export interface SorobanConfig {
 
 export default (): {
   app: AppConfig;
+  ws: WsConfig;
   db: DbConfig;
   soroban: SorobanConfig;
   throttle: ThrottleConfig;
@@ -43,6 +53,9 @@ export default (): {
       .split(',')
       .map((origin) => origin.trim())
       .filter((origin) => origin.length > 0),
+  },
+  ws: {
+    authSecret: process.env.WS_AUTH_SECRET ?? '',
   },
   db: {
     url: process.env.DATABASE_URL ?? 'file:./dev.db',
