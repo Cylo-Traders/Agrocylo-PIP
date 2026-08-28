@@ -7,7 +7,10 @@ import {
   isEscrowConfigured,
 } from '../lib/soroban/config';
 import type { Campaign } from '../lib/soroban/types';
-import type { FundedInvestment, CampaignStatus } from '../lib/soroban/investorService';
+import type {
+  FundedInvestment,
+  CampaignStatus,
+} from '../lib/soroban/investorService';
 
 const DEFAULT_LOOKBACK_LEDGERS = 120_000;
 
@@ -33,9 +36,12 @@ export function useInvestorPortfolio(publicKey: string | undefined) {
 
       // Filter events to ContribReceived or events where actor / investor is publicKey
       const userEvents = events.filter((e) => {
-        const matchesName = e.name === 'ContribReceived' || e.name === 'fund_campaign';
+        const matchesName =
+          e.name === 'ContribReceived' || e.name === 'fund_campaign';
         const matchesInvestor = e.values.some(
-          (val) => typeof val === 'string' && val.toLowerCase() === publicKey.toLowerCase(),
+          (val) =>
+            typeof val === 'string' &&
+            val.toLowerCase() === publicKey.toLowerCase(),
         );
         return matchesName && matchesInvestor;
       });
