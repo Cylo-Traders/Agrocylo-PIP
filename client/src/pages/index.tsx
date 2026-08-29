@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 
 export { CampaignDetailPage } from './CampaignDetailPage';
+export { CampaignsPage } from './CampaignsPage';
 export { CreateCampaignPage } from './CreateCampaignPage';
 export { AdminDashboardPage } from './AdminDashboardPage';
 export { ActivityFeedPage } from './ActivityFeedPage';
@@ -44,21 +45,6 @@ export function HomePage() {
       action={
         <Link to="/campaigns" className={primaryLinkClass}>
           Explore campaigns
-        </Link>
-      }
-    />
-  );
-}
-
-export function CampaignsPage() {
-  return (
-    <PlaceholderPage
-      eyebrow="Marketplace"
-      title="Campaigns"
-      description="Browse active and completed agricultural funding campaigns."
-      action={
-        <Link to="/campaigns/new" className={primaryLinkClass}>
-          Create a campaign
         </Link>
       }
     />
