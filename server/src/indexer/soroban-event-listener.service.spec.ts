@@ -263,7 +263,9 @@ describe('SorobanEventListenerService', () => {
     // continuation cursor), then a short 20-event page that signals the
     // range is exhausted.
     const page1Events = Array.from({ length: 100 }, (_, i) => makeEvent(i));
-    const page2Events = Array.from({ length: 20 }, (_, i) => makeEvent(100 + i));
+    const page2Events = Array.from({ length: 20 }, (_, i) =>
+      makeEvent(100 + i),
+    );
 
     const getEvents = jest
       .fn()
