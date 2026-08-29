@@ -12,7 +12,23 @@ export const envValidationSchema = Joi.object({
   LOG_LEVEL: Joi.string()
     .valid('trace', 'debug', 'info', 'warn', 'error', 'fatal')
     .default('info'),
-  DATABASE_URL: Joi.string().default('file:./dev.db'),
+  DATABASE_URL: Joi.string()
+    .when('NODE_ENV', {
+      is: 'production',
+      then: Joi.string()
+        .custom((value, helpers) => {
+          if (value.startsWith('file:')) {
+            return helpers.error('databaseUrl.fileInProduction');
+          }
+          return value;
+        })
+        .messages({
+          'databaseUrl.fileInProduction':
+            '"DATABASE_URL" cannot use the "file:" scheme in production',
+        })
+        .required(),
+      otherwise: Joi.string().default('file:./dev.db'),
+    }),
   SOROBAN_RPC_URL: Joi.string()
     .uri()
     .default('https://soroban-testnet.stellar.org'),
