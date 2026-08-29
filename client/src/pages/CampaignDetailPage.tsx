@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom';
 import { FundCampaignModal } from '../components/campaign/FundCampaignModal';
 import { StatusBadge } from '../components/campaign/StatusBadge';
 import { ActivityFeed } from '../components/campaign/ActivityFeed';
+import { OpenDisputeForm } from '../components/campaign/OpenDisputeForm';
 import { useCampaignLiveUpdates } from '../hooks/useCampaignLiveUpdates';
 import { useCampaign } from '../hooks/contract/useEscrowQueries';
 import { DetailPageSkeleton } from '../components/ui/Skeleton/Skeleton';
@@ -131,6 +132,11 @@ export const CampaignDetailPage: React.FC = () => {
           refreshIntervalMs={30_000}
         />
       </div>
+
+      <OpenDisputeForm
+        campaignId={campaign.id}
+        farmerAddress={campaign.farmer}
+      />
     </div>
   );
 };
