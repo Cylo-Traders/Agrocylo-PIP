@@ -7,7 +7,14 @@ import { AnalyticsDashboardPage } from './pages/AnalyticsDashboardPage';
 import { AdminDashboardPage } from './pages/AdminDashboardPage';
 import { ActivityFeedPage } from './pages/ActivityFeedPage';
 import { CampaignDetailPage } from './pages/CampaignDetailPage';
-import { FarmerProfilePage } from './pages/FarmerProfilePage';
+import { CreateCampaignPage } from './pages/CreateCampaignPage';
+import { InvestorDashboardPage } from './pages/InvestorDashboardPage';
+import {
+  FarmerProfilePage,
+  CampaignsPage,
+  FarmerDashboardPage,
+  NotFoundPage,
+} from './pages';
 import './App.css';
 
 export default function App() {
@@ -47,15 +54,28 @@ export default function App() {
     <Routes>
       <Route path="/" element={<DesignFoundationsPage />} />
       <Route path="/analytics" element={<AnalyticsDashboardPage />} />
-      <Route path="/admin" element={<AdminDashboardPage />} />
       <Route path="/dev/components" element={<Playground />} />
 
-      {/* AppLayout routes */}
+      {/* AppLayout routes — all pages wired into the router (Issue #143) */}
       <Route element={<AppLayout />}>
         <Route path="/activity" element={<ActivityFeedPage />} />
+
+        {/* Campaign routes */}
+        <Route path="/campaigns" element={<CampaignsPage />} />
+        <Route path="/campaigns/new" element={<CreateCampaignPage />} />
         <Route path="/campaigns/:id" element={<CampaignDetailPage />} />
+
+        {/* Dashboard routes */}
+        <Route path="/dashboard/investor" element={<InvestorDashboardPage />} />
+        <Route path="/dashboard/farmer" element={<FarmerDashboardPage />} />
+        <Route path="/dashboard/admin" element={<AdminDashboardPage />} />
+
+        {/* Profile routes */}
         <Route path="/profile" element={<FarmerProfilePage />} />
         <Route path="/farmers/:address" element={<FarmerProfilePage />} />
+
+        {/* Catch-all 404 route (Issue #143) */}
+        <Route path="*" element={<NotFoundPage />} />
       </Route>
     </Routes>
   );
