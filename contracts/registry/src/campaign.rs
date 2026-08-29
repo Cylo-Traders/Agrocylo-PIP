@@ -50,6 +50,16 @@ pub fn link_campaign_escrow(
         panic!("campaign already linked");
     }
 
+    // Must have been register_campaign'd first, and by the same farmer --
+    // otherwise this would create a CampaignRecord with no corresponding
+    // title/description, or let a second, disagreeing farmer address link
+    // against someone else's registered campaign id.
+    let campaign_info = storage::get_campaign(env, campaign_id)
+        .unwrap_or_else(|| panic!("campaign not registered"));
+    if campaign_info.farmer != *farmer {
+        panic!("farmer does not match registered campaign");
+    }
+
     // Approved escrow contracts can link on behalf of the farmer (cross-contract flow);
     // otherwise the farmer must authorize directly.
     if storage::is_contract_approved(env, escrow_contract) {

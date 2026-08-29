@@ -26,7 +26,7 @@ use registry::{
 use soroban_sdk::{
     testutils::{Address as _, Events},
     token::{Client as TokenClient, StellarAssetClient},
-    Address, Env, Symbol, TryFromVal,
+    Address, Env, String, Symbol, TryFromVal,
 };
 
 // ─── shared harness ──────────────────────────────────────────────────────
@@ -84,6 +84,19 @@ impl<'a> Harness<'a> {
         let campaign_id = 1u64;
         let deadline = 1_000_000u64;
         let harvest_metadata = Symbol::new(&env, "maize");
+
+        // registry/src/campaign.rs#link_campaign_escrow now requires the
+        // campaign to already be register_campaign'd (issue #153), so tests
+        // that manually call `registry.link_campaign_escrow(...)` below need
+        // this done up front. The escrow contract itself isn't wired to the
+        // registry in this harness (see `escrow_wired_to_registry_...` below
+        // for that flow), so this doesn't happen automatically here.
+        registry.register_campaign(
+            &campaign_id,
+            &farmer,
+            &String::from_str(&env, "Maize Campaign"),
+            &String::from_str(&env, "Integration test campaign"),
+        );
 
         escrow.create_campaign(
             &campaign_id,
@@ -532,6 +545,15 @@ fn escrow_wired_to_registry_populates_activity_and_status() {
     escrow.set_registry(&registry_id);
 
     let campaign_id = 1u64;
+    // See the comment in Harness::new() above: link_campaign_escrow (called
+    // internally by create_campaign below, since the registry is wired up)
+    // now requires register_campaign to have happened first.
+    registry.register_campaign(
+        &campaign_id,
+        &farmer,
+        &String::from_str(&env, "Maize Campaign"),
+        &String::from_str(&env, "Integration test campaign"),
+    );
     escrow.create_campaign(
         &campaign_id,
         &farmer,
