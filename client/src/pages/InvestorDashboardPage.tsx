@@ -10,6 +10,9 @@ import { InvestorSummaryStats } from '../components/investor/InvestorSummaryStat
 import { InvestmentCard } from '../components/investor/InvestmentCard';
 import { DashboardRowsSkeleton } from '../components/ui/Skeleton/Skeleton';
 
+const cardClass =
+  'rounded-campaign border border-soil-200 bg-white p-6 shadow-campaign';
+
 export const InvestorDashboardPage: React.FC = () => {
   const { isConnected, publicKey } = useWallet();
   const { data: investments, isLoading } = useInvestorPortfolio(
@@ -38,45 +41,41 @@ export const InvestorDashboardPage: React.FC = () => {
   const stats = calculatePortfolioStats(investments ?? []);
 
   return (
-    <div className="max-w-5xl mx-auto p-6 space-y-8">
+    <div className="mx-auto max-w-5xl space-y-8 p-6">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-6">
+      <div className="flex flex-col justify-between gap-4 border-b border-soil-200 pb-6 md:flex-row md:items-center">
         <div>
-          <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
-            Investor Dashboard
-          </h1>
-          <p className="text-slate-500 dark:text-slate-400 mt-1">
+          <h1 className="text-soil-950 tracking-tight">Investor Dashboard</h1>
+          <p className="mt-1 text-body-sm text-soil-500">
             Track funded campaigns, claimable returns, and pro-rata refunds.
           </p>
         </div>
 
         {isConnected && publicKey ? (
-          <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-800/80 px-4 py-2 rounded-xl text-xs font-mono text-slate-700 dark:text-slate-300">
+          <div className="flex items-center gap-2 rounded-campaign bg-soil-100 px-4 py-2 font-mono text-caption text-soil-700">
             <span
-              className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"
+              className="h-2.5 w-2.5 animate-pulse rounded-full bg-status-resolved"
               aria-hidden="true"
             />
             <span>Connected: {publicKey}</span>
           </div>
         ) : (
-          <div className="flex items-center gap-2 bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 px-4 py-2 rounded-xl text-xs font-medium text-amber-800 dark:text-amber-300">
+          <div className="flex items-center gap-2 rounded-campaign border border-status-harvested/20 bg-status-harvested-light px-4 py-2 text-caption font-medium text-status-harvested-dark">
             <span>Wallet Disconnected</span>
           </div>
         )}
       </div>
 
       {!isConnected || !publicKey ? (
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-12 text-center space-y-4 shadow-sm">
+        <div className={`${cardClass} p-12 text-center`}>
           <div
-            className="w-12 h-12 rounded-full bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300 flex items-center justify-center mx-auto text-xl font-bold"
+            className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-status-harvested-light text-xl font-bold text-status-harvested-dark"
             aria-hidden="true"
           >
             🔒
           </div>
-          <h2 className="text-xl font-bold text-slate-900 dark:text-white">
-            Connect Your Wallet
-          </h2>
-          <p className="text-sm text-slate-600 dark:text-slate-400 max-w-md mx-auto">
+          <h2 className="mt-4 text-h4 text-soil-900">Connect Your Wallet</h2>
+          <p className="mx-auto mt-2 max-w-md text-body-sm text-soil-500">
             Connect your Soroban-compatible wallet to view your active
             investments, claimable returns, and refund balances.
           </p>
@@ -91,22 +90,22 @@ export const InvestorDashboardPage: React.FC = () => {
           />
 
           <div className="space-y-4">
-            <h2 className="text-xl font-bold text-slate-900 dark:text-white">
+            <h2 className="text-h4 text-soil-900">
               Your Contributions ({(investments ?? []).length})
             </h2>
 
             {(investments ?? []).length === 0 ? (
-              <div className="bg-white dark:bg-slate-900 border border-dashed border-slate-300 dark:border-slate-800 rounded-2xl p-12 text-center space-y-3">
+              <div className="rounded-campaign border border-dashed border-soil-300 bg-white p-12 text-center">
                 <div
-                  className="w-12 h-12 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 flex items-center justify-center mx-auto text-xl font-bold"
+                  className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-soil-100 text-xl font-bold text-soil-600"
                   aria-hidden="true"
                 >
                   📂
                 </div>
-                <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
+                <h3 className="mt-3 text-h4 text-soil-900">
                   No Funded Investments Found
                 </h3>
-                <p className="text-sm text-slate-600 dark:text-slate-400 max-w-md mx-auto">
+                <p className="mx-auto mt-2 max-w-md text-body-sm text-soil-500">
                   You haven&apos;t contributed to any PIP campaigns yet. Browse
                   active campaigns to start investing.
                 </p>

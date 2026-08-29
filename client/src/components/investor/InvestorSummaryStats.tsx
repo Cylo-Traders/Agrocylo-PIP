@@ -6,44 +6,38 @@ export interface InvestorSummaryStatsProps {
   totalCampaigns: number;
 }
 
+const cardClass =
+  'rounded-campaign border border-soil-200 bg-white p-5 shadow-campaign';
+const labelClass =
+  'text-caption text-soil-500 block uppercase tracking-wider';
+const valueClass = 'text-2xl font-bold text-soil-900 mt-1 block';
+
 export const InvestorSummaryStats: React.FC<InvestorSummaryStatsProps> = ({
   stats,
   totalCampaigns,
 }) => {
   return (
-    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm">
-        <span className="text-xs font-medium text-slate-600 dark:text-slate-400 block uppercase tracking-wider">
-          Funded Projects
-        </span>
-        <span className="text-2xl font-bold text-slate-900 dark:text-white mt-1 block">
-          {totalCampaigns}
-        </span>
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+      <div className={cardClass}>
+        <span className={labelClass}>Funded Projects</span>
+        <span className={valueClass}>{totalCampaigns}</span>
       </div>
 
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm">
-        <span className="text-xs font-medium text-slate-600 dark:text-slate-400 block uppercase tracking-wider">
-          Total Contributed
-        </span>
-        <span className="text-2xl font-bold text-slate-900 dark:text-white mt-1 block">
-          ${stats.totalInvested.toLocaleString()}
-        </span>
+      <div className={cardClass}>
+        <span className={labelClass}>Total Contributed</span>
+        <span className={valueClass}>${stats.totalInvested.toLocaleString()}</span>
       </div>
 
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm">
-        <span className="text-xs font-medium text-slate-600 dark:text-slate-400 block uppercase tracking-wider">
-          Claimable / Pending
-        </span>
-        <span className="text-2xl font-bold text-amber-600 dark:text-amber-400 mt-1 block">
+      <div className={cardClass}>
+        <span className={labelClass}>Claimable / Pending</span>
+        <span className={`${valueClass} text-status-harvested`}>
           ${stats.totalPending.toLocaleString()}
         </span>
       </div>
 
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm">
-        <span className="text-xs font-medium text-slate-600 dark:text-slate-400 block uppercase tracking-wider">
-          Total Claimed
-        </span>
-        <span className="text-2xl font-bold text-emerald-600 dark:text-emerald-400 mt-1 block">
+      <div className={cardClass}>
+        <span className={labelClass}>Total Claimed</span>
+        <span className={`${valueClass} text-status-resolved`}>
           ${stats.totalClaimed.toLocaleString()}
         </span>
       </div>
