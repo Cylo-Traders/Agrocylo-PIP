@@ -78,6 +78,7 @@ no privileged signer.
 | `settle_campaign`   | Settle campaign and distribute funds            |
 | `mark_failed`       | Mark campaign as failed, trigger refunds        |
 | `open_dispute`      | Enter dispute state                             |
+| `touch_campaign`    | Permissionless keep-alive: extends TTL of a campaign's persistent storage entries without changing state (see "Storage expiry & keep-alives") |
 | `get_campaign`      | Retrieve campaign details                       |
 
 ## Trust model: `receive_contribution`

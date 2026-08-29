@@ -1952,3 +1952,223 @@ fn test_get_admin_returns_initialized_admin() {
     let stored_admin = client.get_admin();
     assert_eq!(stored_admin, admin);
 }
+
+// ─── TTL keep-alive (touch_campaign) tests ──────────────────────────────────
+
+/// One ledger per ~5 seconds; these mirror the lifetime constants in
+/// storage.rs (threshold 30d, bump 90d) so the test can reliably push entries
+/// below the extension threshold and observe the keep-alive raising them again.
+const DAY_IN_LEDGERS: u32 = 17280;
+const PERSISTENT_LIFETIME_THRESHOLD: u32 = DAY_IN_LEDGERS * 30;
+const PERSISTENT_BUMP_AMOUNT: u32 = DAY_IN_LEDGERS * 90;
+
+/// Advances the ledger far enough that a freshly written persistent entry's
+/// remaining TTL drops below the extension threshold (but stays positive), so
+/// a subsequent keep-alive is observable.
+fn age_persistent_entries(env: &Env) {
+    let degrade = PERSISTENT_BUMP_AMOUNT - (PERSISTENT_LIFETIME_THRESHOLD / 2);
+    env.ledger()
+        .set_sequence_number(env.ledger().sequence() + degrade);
+}
+
+#[test]
+fn test_touch_campaign_extends_ttl_of_campaign_entries() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, ProductionEscrowContract);
+    let client = ProductionEscrowContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let farmer = Address::generate(&env);
+    let investor = Address::generate(&env);
+    let campaign_id = 1u64;
+    let (token_address, sac) = create_token(&env, &admin);
+    sac.mint(&investor, &1000i128);
+
+    client.initialize(&admin);
+    client.create_campaign(
+        &campaign_id,
+        &farmer,
+        &1000i128,
+        &token_address,
+        &1_000_000u64,
+        &Symbol::new(&env, "wheat"),
+    );
+    client.fund_campaign(&campaign_id, &investor, &1000i128);
+
+    // Give the campaign the tranches and harvest-record persistent entries
+    // (a dispute is exercised in its own test below because opening a dispute
+    // moves the campaign out of the states that allow reporting a harvest).
+    let mut tranches: Vec<Tranche> = Vec::new(&env);
+    tranches.push_back(Tranche {
+        amount: 1000i128,
+        milestone: Symbol::new(&env, "planting"),
+        released: false,
+    });
+    client.configure_tranches(&campaign_id, &tranches);
+    client.report_harvest(&campaign_id, &farmer, &Symbol::new(&env, "good"));
+
+    let campaign_key = DataKey::Campaign(campaign_id);
+    let tranches_key = DataKey::Tranches(campaign_id);
+    let harvest_key = DataKey::HarvestRecord(campaign_id);
+
+    // Age all entries so their TTLs degrade below the extension threshold, then
+    // measure the degraded TTL as the baseline.
+    age_persistent_entries(&env);
+    let before = env.as_contract(&contract_id, || {
+        (
+            env.storage().persistent().get_ttl(&campaign_key),
+            env.storage().persistent().get_ttl(&tranches_key),
+            env.storage().persistent().get_ttl(&harvest_key),
+        )
+    });
+
+    // A keeper calls touch_campaign to keep the (potentially settled) history
+    // readable. It must not panic and must re-extend every campaign entry.
+    client.touch_campaign(&campaign_id);
+
+    let after = env.as_contract(&contract_id, || {
+        (
+            env.storage().persistent().get_ttl(&campaign_key),
+            env.storage().persistent().get_ttl(&tranches_key),
+            env.storage().persistent().get_ttl(&harvest_key),
+        )
+    });
+
+    assert!(
+        after.0 > before.0,
+        "campaign TTL not extended: before={} after={}",
+        before.0,
+        after.0
+    );
+    assert!(
+        after.1 > before.1,
+        "tranches TTL not extended: before={} after={}",
+        before.1,
+        after.1
+    );
+    assert!(
+        after.2 > before.2,
+        "harvest record TTL not extended: before={} after={}",
+        before.2,
+        after.2
+    );
+}
+
+#[test]
+fn test_touch_campaign_extends_ttl_of_dispute() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, ProductionEscrowContract);
+    let client = ProductionEscrowContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let farmer = Address::generate(&env);
+    let investor1 = Address::generate(&env);
+    let campaign_id = 1u64;
+    let (token_address, sac) = create_token(&env, &admin);
+    // Tokens reconciled off-chain must exist in the contract for the solvency
+    // check on receive_contribution.
+    sac.mint(&contract_id, &1000i128);
+
+    client.initialize(&admin);
+    client.create_campaign(
+        &campaign_id,
+        &farmer,
+        &1000i128,
+        &token_address,
+        &1_000_000u64,
+        &Symbol::new(&env, "wheat"),
+    );
+    client.receive_contribution(&campaign_id, &investor1, &1000i128);
+    client.open_dispute(&campaign_id, &investor1, &Symbol::new(&env, "Delay"));
+
+    let dispute_key = DataKey::Dispute(campaign_id);
+    age_persistent_entries(&env);
+    let before = env.as_contract(&contract_id, || {
+        env.storage().persistent().get_ttl(&dispute_key)
+    });
+
+    client.touch_campaign(&campaign_id);
+
+    let after = env.as_contract(&contract_id, || {
+        env.storage().persistent().get_ttl(&dispute_key)
+    });
+    assert!(
+        after > before,
+        "dispute TTL not extended: before={} after={}",
+        before,
+        after
+    );
+}
+
+#[test]
+fn test_touch_campaign_does_not_change_campaign_state() {
+    let s = token_funded_campaign();
+    let campaign = s.client.get_campaign(&s.campaign_id).unwrap();
+
+    s.client.touch_campaign(&s.campaign_id);
+
+    let after = s.client.get_campaign(&s.campaign_id).unwrap();
+    assert_eq!(after, campaign);
+}
+
+#[test]
+fn test_touch_campaign_nonexistent_campaign_is_noop() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, ProductionEscrowContract);
+    let client = ProductionEscrowContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+
+    // Should not panic even though campaign 99 does not exist.
+    client.touch_campaign(&99u64);
+}
+
+#[test]
+fn test_get_tranches_extends_ttl() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, ProductionEscrowContract);
+    let client = ProductionEscrowContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let farmer = Address::generate(&env);
+    let investor = Address::generate(&env);
+    let campaign_id = 1u64;
+    let (token_address, sac) = create_token(&env, &admin);
+    sac.mint(&investor, &1000i128);
+
+    client.initialize(&admin);
+    client.create_campaign(
+        &campaign_id,
+        &farmer,
+        &1000i128,
+        &token_address,
+        &1_000_000u64,
+        &Symbol::new(&env, "wheat"),
+    );
+    client.fund_campaign(&campaign_id, &investor, &1000i128);
+
+    let mut tranches: Vec<Tranche> = Vec::new(&env);
+    tranches.push_back(Tranche {
+        amount: 1000i128,
+        milestone: Symbol::new(&env, "planting"),
+        released: false,
+    });
+    client.configure_tranches(&campaign_id, &tranches);
+
+    let key = DataKey::Tranches(campaign_id);
+    age_persistent_entries(&env);
+    let before = env.as_contract(&contract_id, || env.storage().persistent().get_ttl(&key));
+
+    // Reading via the public getter must also extend the tranches TTL.
+    let read = client.get_tranches(&campaign_id);
+    assert_eq!(read.len(), 1);
+    let after = env.as_contract(&contract_id, || env.storage().persistent().get_ttl(&key));
+    assert!(after > before, "get_tranches did not extend TTL");
+}
