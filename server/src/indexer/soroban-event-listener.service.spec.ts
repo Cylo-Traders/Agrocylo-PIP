@@ -239,6 +239,123 @@ describe('SorobanEventListenerService', () => {
     await serviceB.stopListening();
   });
 
+  it('pages through a burst of more than 100 events in a single poll instead of dropping the overflow', async () => {
+    const cursorStore = makeCursorStore();
+    cursorStore.rows['CESCROW1'] = {
+      contractId: 'CESCROW1',
+      lastProcessedLedger: 500,
+    };
+    const prisma = { indexerCursor: cursorStore };
+    const configService = makeConfigService();
+    const eventParser = makeEventParser();
+    const service = buildService(prisma, configService, eventParser);
+
+    const makeEvent = (i: number) => ({
+      id: `ev${i}`,
+      topic: ['CampaignFunded', BigInt(i)],
+      value: [1700000000n, BigInt(i)],
+      ledger: 501 + Math.floor(i / 10),
+      contractId: 'CESCROW1',
+      txHash: `tx${i}`,
+    });
+
+    // 120 events split across two pages: a full 100-event page (with an RPC
+    // continuation cursor), then a short 20-event page that signals the
+    // range is exhausted.
+    const page1Events = Array.from({ length: 100 }, (_, i) => makeEvent(i));
+    const page2Events = Array.from({ length: 20 }, (_, i) =>
+      makeEvent(100 + i),
+    );
+
+    const getEvents = jest
+      .fn()
+      .mockResolvedValueOnce({ events: page1Events, cursor: 'page-2-cursor' })
+      .mockResolvedValueOnce({ events: page2Events });
+
+    const rpcServer = {
+      getLatestLedger: jest.fn().mockResolvedValue({ sequence: 600 }),
+      getEvents,
+    };
+    (service as any).rpcServer = rpcServer;
+
+    await service.startListening();
+    await (service as any).pollEvents();
+
+    // All 120 events across both pages were processed, not just the first
+    // page's 100.
+    expect(eventParser.processEvent).toHaveBeenCalledTimes(120);
+
+    // First call paginates from the persisted cursor; second call continues
+    // via the RPC's own cursor rather than re-requesting from startLedger.
+    expect(getEvents).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ startLedger: 501 }),
+    );
+    expect(getEvents).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ cursor: 'page-2-cursor' }),
+    );
+
+    // Both pages were fully drained (the second page was short), so the
+    // cursor is safe to advance all the way to the chain tip.
+    expect(cursorStore.rows['CESCROW1'].lastProcessedLedger).toBe(600);
+    expect((service as any).lastProcessedLedger).toBe(600);
+
+    await service.stopListening();
+  });
+
+  it('does not advance the cursor past events still sitting on an unfetched page when the safety cap is hit', async () => {
+    const cursorStore = makeCursorStore();
+    cursorStore.rows['CESCROW1'] = {
+      contractId: 'CESCROW1',
+      lastProcessedLedger: 500,
+    };
+    const prisma = { indexerCursor: cursorStore };
+    const configService = makeConfigService();
+    const eventParser = makeEventParser();
+    const service = buildService(prisma, configService, eventParser);
+
+    // Every page comes back full (100 events) with a continuation cursor,
+    // so the RPC never signals exhaustion - simulating either a huge
+    // backlog or a misbehaving endpoint that always claims there's more.
+    let call = 0;
+    const getEvents = jest.fn(async () => {
+      call += 1;
+      const events = Array.from({ length: 100 }, (_, i) => ({
+        id: `ev-p${call}-${i}`,
+        topic: ['CampaignFunded', BigInt(i)],
+        value: [1700000000n, BigInt(i)],
+        ledger: 500 + call,
+        contractId: 'CESCROW1',
+        txHash: `tx-p${call}-${i}`,
+      }));
+      return { events, cursor: `cursor-${call}` };
+    });
+
+    const rpcServer = {
+      getLatestLedger: jest.fn().mockResolvedValue({ sequence: 10000 }),
+      getEvents,
+    };
+    (service as any).rpcServer = rpcServer;
+
+    await service.startListening();
+    await (service as any).pollEvents();
+
+    // Bounded by MAX_PAGES_PER_POLL (50), not looping forever.
+    expect(getEvents).toHaveBeenCalledTimes(50);
+    expect(eventParser.processEvent).toHaveBeenCalledTimes(50 * 100);
+
+    // The last fetched page's events all landed on ledger 550. Since more
+    // events for that same ledger could exist on the next (unfetched) page,
+    // the cursor must back off to 549 - not jump to the chain tip (10000),
+    // and not land on 550 either.
+    expect(cursorStore.rows['CESCROW1'].lastProcessedLedger).toBe(549);
+    expect((service as any).lastProcessedLedger).toBe(549);
+    expect((service as any).logger.error).toHaveBeenCalled();
+
+    await service.stopListening();
+  });
+
   it('does not reprocess an event id already seen in this run', async () => {
     const cursorStore = makeCursorStore();
     cursorStore.rows['CESCROW1'] = {

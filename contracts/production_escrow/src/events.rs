@@ -1,4 +1,4 @@
-use crate::types::DisputeResolution;
+use crate::DisputeResolution;
 use soroban_sdk::{Address, Env, Symbol};
 
 pub fn emit_campaign_created(env: &Env, campaign_id: u64, farmer: Address, target_amount: i128) {
@@ -103,6 +103,11 @@ pub fn emit_campaign_settled(
     investor_returns: i128,
 ) {
     let topics = (Symbol::new(env, "CampaignSettled"), campaign_id);
-    let payload = (farmer, env.ledger().timestamp(), farmer_payout, investor_returns);
+    let payload = (
+        farmer,
+        env.ledger().timestamp(),
+        farmer_payout,
+        investor_returns,
+    );
     env.events().publish(topics, payload);
 }

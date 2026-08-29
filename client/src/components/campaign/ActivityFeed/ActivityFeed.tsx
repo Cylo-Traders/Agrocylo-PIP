@@ -8,10 +8,6 @@ import { ActivityFeedItem } from './ActivityFeedItem';
 import { Spinner } from '../../ui/Spinner/Spinner';
 import './ActivityFeed.css';
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
 interface ActivityFeedProps {
   /** When provided, shows only this campaign's activity. When omitted, shows
    *  the aggregated global feed from `campaignIds`. */
@@ -26,11 +22,10 @@ interface ActivityFeedProps {
   title?: string;
 }
 
-// ---------------------------------------------------------------------------
-// Hook: per-campaign activity
-// ---------------------------------------------------------------------------
-
-function useCampaignActivity(campaignId: bigint | undefined, refreshIntervalMs: number) {
+function useCampaignActivity(
+  campaignId: bigint | undefined,
+  refreshIntervalMs: number,
+) {
   return useQuery({
     queryKey: contractQueryKeys.activity(campaignId?.toString() ?? ''),
     enabled: campaignId !== undefined && isRegistryConfigured(),
@@ -39,10 +34,6 @@ function useCampaignActivity(campaignId: bigint | undefined, refreshIntervalMs: 
     staleTime: 10_000,
   });
 }
-
-// ---------------------------------------------------------------------------
-// Hook: global aggregated feed
-// ---------------------------------------------------------------------------
 
 function useGlobalActivity(campaignIds: bigint[], refreshIntervalMs: number) {
   return useQuery({
@@ -63,10 +54,6 @@ function useGlobalActivity(campaignIds: bigint[], refreshIntervalMs: number) {
   });
 }
 
-// ---------------------------------------------------------------------------
-// Component
-// ---------------------------------------------------------------------------
-
 export const ActivityFeed: React.FC<ActivityFeedProps> = ({
   campaignId,
   campaignIds = [],
@@ -79,16 +66,25 @@ export const ActivityFeed: React.FC<ActivityFeedProps> = ({
 
   const isScoped = campaignId !== undefined;
 
-  const scopedQuery = useCampaignActivity(isScoped ? campaignId : undefined, refreshIntervalMs);
-  const globalQuery = useGlobalActivity(isScoped ? [] : campaignIds, refreshIntervalMs);
+  const scopedQuery = useCampaignActivity(
+    isScoped ? campaignId : undefined,
+    refreshIntervalMs,
+  );
+  const globalQuery = useGlobalActivity(
+    isScoped ? [] : campaignIds,
+    refreshIntervalMs,
+  );
 
-  const { data, isLoading, isError, error } = isScoped ? scopedQuery : globalQuery;
+  const { data, isLoading, isError, error } = isScoped
+    ? scopedQuery
+    : globalQuery;
 
-  // Sort scoped results by newest first (global already sorted in queryFn)
   const sorted = React.useMemo<ActivityRecord[]>(() => {
     if (!data) return [];
     if (isScoped) {
-      return [...data].sort((a, b) => Number(b.timestamp) - Number(a.timestamp));
+      return [...data].sort(
+        (a, b) => Number(b.timestamp) - Number(a.timestamp),
+      );
     }
     return data;
   }, [data, isScoped]);
@@ -107,7 +103,8 @@ export const ActivityFeed: React.FC<ActivityFeedProps> = ({
     setPage(0);
   }, [isScoped, campaignId, queryClient]);
 
-  const feedTitle = title ?? (isScoped ? 'Campaign Activity' : 'Platform Activity');
+  const feedTitle =
+    title ?? (isScoped ? 'Campaign Activity' : 'Platform Activity');
 
   return (
     <section className="activity-feed" aria-label={feedTitle}>
@@ -125,8 +122,12 @@ export const ActivityFeed: React.FC<ActivityFeedProps> = ({
       </div>
 
       {isLoading && (
-        <div className="activity-feed__loading" role="status" aria-label="Loading activity">
-          <Spinner size="md" variant="primary" />
+        <div
+          className="activity-feed__loading"
+          role="status"
+          aria-label="Loading activity"
+        >
+          <Spinner size="md" variant="primary" label={null} />
         </div>
       )}
 
@@ -154,7 +155,10 @@ export const ActivityFeed: React.FC<ActivityFeedProps> = ({
       )}
 
       {totalPages > 1 && (
-        <nav className="activity-feed__pagination" aria-label="Activity feed pagination">
+        <nav
+          className="activity-feed__pagination"
+          aria-label="Activity feed pagination"
+        >
           <button
             type="button"
             className="activity-feed__page-btn"

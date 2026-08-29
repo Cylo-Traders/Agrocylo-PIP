@@ -1,12 +1,7 @@
 .ui-skeleton {
   display: block;
   border-radius: 0.5rem;
-  background: linear-gradient(
-    90deg,
-    #f0e8d8 0%,
-    #faf6f0 40%,
-    #f0e8d8 80%
-  );
+  background: linear-gradient(90deg, #f0e8d8 0%, #faf6f0 40%, #f0e8d8 80%);
   background-size: 200% 100%;
   animation: ui-skeleton-shimmer 1.4s ease-in-out infinite;
 }

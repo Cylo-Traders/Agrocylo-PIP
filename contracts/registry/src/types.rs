@@ -52,9 +52,11 @@ pub enum CampaignStatus {
     Funding,
     Funded,
     InProduction,
+    Harvested,
     Disputed,
     Resolved,
     Settled,
+    Failed,
 }
 
 /// Links a campaign to its ProductionEscrowContract instance and crop/region
@@ -76,11 +78,20 @@ pub struct CampaignRecord {
 pub enum DataKey {
     Admin,
     ApprovedContract(Address),
-    CampaignActivities(u64),
+    /// Page `n` (0-based) of the campaign's activity log. Each page holds at
+    /// most `storage::MAX_ACTIVITIES_PER_PAGE` entries so the log never grows
+    /// into a single unbounded ledger entry.
+    CampaignActivitiesPage(u64, u32),
+    /// Number of non-empty activity pages for `campaign_id`.
+    CampaignActivitiesPageCount(u64),
     Farmer(Address),
     Campaign(u64),
     FarmerCount,
     CampaignCount,
     CampaignRecord(u64),
-    FarmerCampaigns(Address),
+    /// Page `n` (0-based) of a farmer's campaign-id list. Each page holds at
+    /// most `storage::MAX_FARMER_CAMPAIGNS_PER_PAGE` entries.
+    FarmerCampaignsPage(Address, u32),
+    /// Number of non-empty campaign pages for `farmer`.
+    FarmerCampaignsPageCount(Address),
 }

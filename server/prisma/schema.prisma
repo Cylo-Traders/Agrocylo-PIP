@@ -21,7 +21,8 @@ model Campaign {
   trancheCount      Int?
   harvestOutcome    String?
   harvestReportedAt BigInt?
-  refundable        BigInt?
+  refundable        BigInt   @default(0)
+  returnable        BigInt   @default(0)
   createdAt         BigInt
   updatedAt         DateTime @default(now()) @updatedAt
 

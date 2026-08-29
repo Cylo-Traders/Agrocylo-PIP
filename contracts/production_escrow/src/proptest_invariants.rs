@@ -4,8 +4,6 @@
 // Tune:  PROPTEST_CASES=2000 cargo test -p production_escrow proptest
 // Seed:  PROPTEST_SEED=0xDEADBEEF cargo test ...   (reproduce a specific failure)
 
-#![cfg(test)]
-
 extern crate std;
 
 use proptest::prelude::*;
@@ -40,6 +38,7 @@ fn create_token<'a>(env: &'a Env, admin: &Address) -> (Address, StellarAssetClie
 // Invariants verified:
 //   • sum of all claimed pro-rata shares ≤ campaign.refundable
 //   • every contribution slot is zeroed after a successful claim (no double-spend)
+//   • a contribution whose pro-rata share rounds down to zero is left intact
 
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(200))]
@@ -86,19 +85,28 @@ proptest! {
         // Mark failed — all held funds (= total_funded here) become refundable.
         client.mark_failed(&1u64);
 
-        let campaign   = client.get_campaign(&1u64);
+        let campaign   = client.get_campaign(&1u64).unwrap();
         let refundable = campaign.refundable;
 
-        // Simulate what claim_refund computes, then call it.
+        // Simulate what claim_refund computes, then call it. A share that
+        // truncates to zero is not claimable — `claim_refund` panics with
+        // "nothing to return" — so those investors are tracked separately.
         let mut total_claimed: i128 = 0;
+        let mut claimed: std::vec::Vec<&Address> = std::vec::Vec::new();
+        let mut skipped: std::vec::Vec<(&Address, i128)> = std::vec::Vec::new();
+
         for inv in &investors {
             let contributed = client.get_contribution(&1u64, inv);
-            if contributed > 0 {
-                let share = contributed * refundable / (target as i128);
-                if share > 0 {
-                    client.claim_refund(&1u64, inv);
-                    total_claimed += share;
-                }
+            if contributed <= 0 {
+                continue;
+            }
+            let share = contributed * refundable / (target as i128);
+            if share > 0 {
+                client.claim_refund(&1u64, inv);
+                total_claimed += share;
+                claimed.push(inv);
+            } else {
+                skipped.push((inv, contributed));
             }
         }
 
@@ -109,11 +117,20 @@ proptest! {
         );
 
         // Every slot that claimed must now be zeroed (no double-spend).
-        for inv in &investors {
+        for inv in claimed {
             prop_assert_eq!(
                 client.get_contribution(&1u64, inv),
                 0i128,
                 "contribution slot not zeroed after claim_refund"
+            );
+        }
+
+        // Slots that could not claim must be left exactly as they were.
+        for (inv, contributed) in skipped {
+            prop_assert_eq!(
+                client.get_contribution(&1u64, inv),
+                contributed,
+                "unclaimable contribution slot must be left untouched"
             );
         }
     }
@@ -125,6 +142,8 @@ proptest! {
 //   • campaign.returnable equals (held − farmer_payout) after settlement
 //   • sum of all claimed pro-rata returns ≤ campaign.returnable
 //   • every contribution slot is zeroed after a successful claim
+//   • a contribution whose pro-rata share rounds down to zero is left intact —
+//     `claim_return` panics with "nothing to return" rather than consuming it
 
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(200))]
@@ -177,7 +196,7 @@ proptest! {
 
         client.settle_campaign(&1u64, &farmer, &farmer_payout);
 
-        let campaign   = client.get_campaign(&1u64);
+        let campaign   = client.get_campaign(&1u64).unwrap();
         let returnable = campaign.returnable;
 
         prop_assert_eq!(
@@ -191,14 +210,24 @@ proptest! {
         }
 
         let mut total_claimed: i128 = 0;
+        // Tracked separately because a claim is only possible when the
+        // investor's pro-rata share rounds to at least 1 — `claim_return`
+        // panics with "nothing to return" otherwise, leaving the slot alone.
+        let mut claimed: std::vec::Vec<&Address> = std::vec::Vec::new();
+        let mut skipped: std::vec::Vec<(&Address, i128)> = std::vec::Vec::new();
+
         for inv in &investors {
             let contributed = client.get_contribution(&1u64, inv);
-            if contributed > 0 {
-                let share = contributed * returnable / (target as i128);
-                if share > 0 {
-                    client.claim_return(&1u64, inv);
-                    total_claimed += share;
-                }
+            if contributed <= 0 {
+                continue;
+            }
+            let share = contributed * returnable / (target as i128);
+            if share > 0 {
+                client.claim_return(&1u64, inv);
+                total_claimed += share;
+                claimed.push(inv);
+            } else {
+                skipped.push((inv, contributed));
             }
         }
 
@@ -207,11 +236,19 @@ proptest! {
             "total_claimed={} > returnable={}", total_claimed, returnable
         );
 
-        for inv in &investors {
+        for inv in claimed {
             prop_assert_eq!(
                 client.get_contribution(&1u64, inv),
                 0i128,
                 "contribution slot not zeroed after claim_return"
+            );
+        }
+
+        for (inv, contributed) in skipped {
+            prop_assert_eq!(
+                client.get_contribution(&1u64, inv),
+                contributed,
+                "unclaimable contribution slot must be left untouched"
             );
         }
     }
@@ -264,12 +301,12 @@ proptest! {
         client.open_dispute(&1u64, &investor, &Symbol::new(&env, "quality"));
 
         let held: i128          = target as i128; // released=refundable=returnable=0
-        let payout_amount: i128 = (held * payout_frac_num / 100).max(1).min(held - 1);
+        let payout_amount: i128 = (held * payout_frac_num as i128 / 100).max(1).min(held - 1);
         let expected_refundable = held - payout_amount;
 
         client.resolve_dispute(&1u64, &DisputeResolution::PartialSettlement, &payout_amount);
 
-        let campaign = client.get_campaign(&1u64);
+        let campaign = client.get_campaign(&1u64).unwrap();
 
         // Exact conservation: payout booked as released, remainder as refundable.
         prop_assert_eq!(

@@ -73,6 +73,38 @@ function isTagLike(v: unknown): boolean {
   return false;
 }
 
+/** Variant tags of the registry's `ActivityAction` enum
+ * (contracts/registry/src/types.rs). The activity-log mirror shape places one
+ * of these in the title/name slot of CampaignRegistered/FarmerRegistered
+ * payloads; the direct-call shape never does. This is a fixed, compile-time set,
+ * so matching against it is deterministic regardless of SDK enum-decoding
+ * quirks, unlike `typeof === 'string'`.
+ */
+const ACTIVITY_ACTION_TAGS: ReadonlySet<string> = new Set([
+  'CampaignCreated',
+  'CampaignFunded',
+  'CampaignStatusChanged',
+  'FundsReleased',
+  'HarvestReported',
+  'DisputeInitiated',
+  'DisputeResolved',
+  'CampaignSettled',
+  'FarmerRegistered',
+  'CampaignRegistered',
+]);
+
+/**
+ * True when `v` is an `ActivityAction` enum tag under any of the three documented
+ * decode shapes (bare string, `['Variant']` array, or `{ tag }` object).
+ */
+function isActivityActionTag(v: unknown): boolean {
+  try {
+    return ACTIVITY_ACTION_TAGS.has(decodeTag(v, 'actionType'));
+  } catch {
+    return false;
+  }
+}
+
 @Injectable()
 export class EventParserService {
   private readonly logger = new Logger(EventParserService.name);
@@ -119,6 +151,8 @@ export class EventParserService {
         return this.parseCampaignEscrowCreated(raw, topics, arr);
       case 'ContribReceived':
         return this.parseCampaignInvested(raw, topics, arr);
+      case 'ContribReconciled':
+        return this.parseContribReconciled(raw, topics, arr);
       case 'CampaignFunded':
         return this.parseCampaignFunded(raw, topics, arr);
       case 'TranchesConfigured':
@@ -240,6 +274,42 @@ export class EventParserService {
       raw,
       topics,
       'campaign.invested',
+      data as unknown as Record<string, unknown>,
+      {
+        campaignId,
+        userAddress: investor,
+        amount,
+      },
+    );
+  }
+
+  /**
+   * `receive_contribution`'s admin-only reconciliation path -- same payload
+   * shape as `ContribReceived` ((investor, timestamp, amount)) but tagged
+   * with a distinct type so it's never conflated with a genuine on-chain
+   * deposit downstream (see events.rs `emit_reconciled_contribution`).
+   */
+  private parseContribReconciled(
+    raw: RawSorobanEvent,
+    topics: unknown[],
+    arr: unknown[],
+  ): ParsedEvent {
+    if (arr.length < 3)
+      throw new Error('ContribReconciled payload must have 3 elements');
+    const campaignId = asString(topics[1], 'campaignId');
+    const investor = asString(arr[0], 'investor');
+    const timestamp = asNumber(arr[1], 'timestamp');
+    const amount = asBigInt(arr[2], 'amount');
+    const data: CampaignInvestedData = {
+      campaignId,
+      investor,
+      amount: amount.toString(),
+      timestamp,
+    };
+    return this.buildEvent(
+      raw,
+      topics,
+      'campaign.contrib_reconciled',
       data as unknown as Record<string, unknown>,
       {
         campaignId,
@@ -665,8 +735,15 @@ export class EventParserService {
     const farmer = asString(topics[1], 'farmer');
     const timestamp = asNumber(arr[arr.length - 2], 'timestamp');
     const ledgerSequence = asNumber(arr[arr.length - 1], 'ledgerSequence');
-    const nameCandidate = arr.length >= 4 ? arr[1] : undefined;
-    const name = typeof nameCandidate === 'string' ? nameCandidate : undefined;
+    // Direct call: (farmer, name, timestamp, ledger_sequence) - arity 4, name
+    // at slot 1. Activity-log mirror: (actor, timestamp, ledger_sequence) -
+    // arity 3 with no name slot at all, so arity deterministically
+    // disambiguates the two shapes; the tag guard additionally rejects an
+    // ActivityAction tag should one ever land in the name slot.
+    const name =
+      arr.length >= 4 && !isActivityActionTag(arr[1])
+        ? asString(arr[1], 'name')
+        : undefined;
     const data: FarmerRegisteredData = {
       farmer,
       name,
@@ -698,12 +775,20 @@ export class EventParserService {
     const farmer = asString(arr[0], 'farmer');
     const timestamp = asNumber(arr[arr.length - 2], 'timestamp');
     const ledgerSequence = asNumber(arr[arr.length - 1], 'ledgerSequence');
-    // The direct campaign_registered() call publishes a plain-string title in
-    // slot 1; the activity-log mirror publishes an ActivityAction enum tag
-    // there instead. Only trust it as a title when it decoded to a string.
+    // Direct call: (farmer, title, timestamp, ledger_sequence) - slot 1 is a
+    // real title String. Activity-log mirror: (actor, action_type, timestamp,
+    // ledger_sequence) - same arity, but slot 1 is an ActivityAction enum tag.
+    // The enum can decode to a bare string, a ['Variant'] array, or a { tag }
+    // object depending on SDK version, so slot 1 can only be trusted as a title
+    // when it is NOT a known ActivityAction tag - a typeof 'string' test alone
+    // would silently accept a bare-string-decoded tag and corrupt the title.
+    // Both shapes are fixed arity 4, so the tag set is the only deterministic
+    // distinguisher here.
     const titleCandidate = arr[1];
     const title =
-      typeof titleCandidate === 'string' ? titleCandidate : undefined;
+      typeof titleCandidate === 'string' && !isActivityActionTag(titleCandidate)
+        ? titleCandidate
+        : undefined;
     const data: CampaignCreatedData = {
       campaignId,
       farmer,
@@ -841,6 +926,9 @@ export class EventParserService {
       case 'campaign.invested':
         await this.handleCampaignInvested(parsed);
         break;
+      case 'campaign.contrib_reconciled':
+        await this.handleContribReconciled(parsed);
+        break;
       case 'campaign.funded':
         await this.handleCampaignFunded(parsed);
         break;
@@ -976,6 +1064,37 @@ export class EventParserService {
     );
   }
 
+  /**
+   * Admin-only reconciliation (no real token transfer). Kept out of the
+   * `Investment` table -- unlike `handleCampaignInvested`, this must not read
+   * as a genuine on-chain deposit -- while still incrementing
+   * `Campaign.totalFunded` to stay consistent with the escrow contract's own
+   * accounting (`receive_contribution` does `total_funded += amount`
+   * on-chain). The generic Transaction audit row created below (tagged
+   * `campaign.contrib_reconciled`, distinct from `campaign.invested`) is what
+   * lets monitoring flag/alert on this path separately, per the contract's
+   * documented trust model.
+   */
+  private async handleContribReconciled(parsed: ParsedEvent): Promise<void> {
+    const data = parsed.data as unknown as CampaignInvestedData;
+
+    await this.ensureUser(data.investor, data.timestamp);
+
+    await this.prisma.campaign.update({
+      where: { id: data.campaignId },
+      data: { totalFunded: { increment: BigInt(data.amount) } },
+    });
+
+    this.logger.warn(
+      {
+        campaignId: data.campaignId,
+        investor: data.investor,
+        amount: data.amount,
+      },
+      'Admin reconciled contribution (no token transfer) recorded',
+    );
+  }
+
   private async handleCampaignFunded(parsed: ParsedEvent): Promise<void> {
     const data = parsed.data as unknown as CampaignFundedData;
     await this.prisma.campaign.update({
@@ -1010,6 +1129,17 @@ export class EventParserService {
         txHash: parsed.txHash,
       },
     });
+
+    // `release_tranche` (contracts/production_escrow/src/lib.rs) moves a
+    // campaign from Funded to InProduction on its first call. Mirror that
+    // lifecycle transition in the index, scoping the write to the current
+    // `Funded` status so a second/third release on an already-InProduction
+    // campaign matches zero rows and is a no-op instead of a redundant write.
+    await this.prisma.campaign.updateMany({
+      where: { id: data.campaignId, status: 'Funded' },
+      data: { status: 'InProduction' },
+    });
+
     this.logger.log(
       { campaignId: data.campaignId, recipient: data.recipient },
       'Tranche released',
@@ -1107,7 +1237,14 @@ export class EventParserService {
 
     await this.prisma.campaign.update({
       where: { id: data.campaignId },
-      data: { status: 'Resolved' },
+      data: {
+        status: 'Resolved',
+        // Mirrors ProductionEscrowContract's `campaign.refundable += refundable_to_investors`
+        // in resolve_dispute -- without this, RegistryContract-facing consumers
+        // (e.g. the investor portfolio endpoint) can never see a dispute-driven
+        // refund, since only mark_failed's refundable was previously persisted here.
+        refundable: { increment: BigInt(data.refundableToInvestors) },
+      },
     });
     this.logger.log(
       { campaignId: data.campaignId, resolution: data.resolution },
@@ -1119,7 +1256,13 @@ export class EventParserService {
     const data = parsed.data as unknown as CampaignSettledData;
     await this.prisma.campaign.update({
       where: { id: data.campaignId },
-      data: { status: 'Settled' },
+      data: {
+        status: 'Settled',
+        // Mirrors ProductionEscrowContract's `campaign.returnable += investor_returns`
+        // in settle_campaign, so investor-facing consumers can compute pro-rata
+        // claimable shares for settled campaigns (see InvestorsService.portfolio).
+        returnable: { increment: BigInt(data.investorReturns) },
+      },
     });
     this.logger.log(
       { campaignId: data.campaignId, farmerPayout: data.farmerPayout },

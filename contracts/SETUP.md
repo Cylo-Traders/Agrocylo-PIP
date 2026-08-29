@@ -73,7 +73,19 @@ cargo test test_initialize_admin
 ### Activity Functions
 
 - `record_activity(campaign_id: u64, actor: Address, action_type: ActivityAction)` - Record campaign activity
-- `get_campaign_activities(campaign_id: u64) -> Vec<ActivityRecord>` - Get all activities for a campaign
+- `get_campaign_activities(campaign_id: u64) -> Vec<ActivityRecord>` - Get all activities for a campaign (concatenates every page; for bounded reads use the paged getters below)
+- `get_campaign_activity_page_count(campaign_id: u64) -> u32` - Number of activity pages (0-based indices `0..page_count`)
+- `get_campaign_activities_page(campaign_id: u64, page: u32) -> Vec<ActivityRecord>` - One page (at most 100 records) of the campaign activity log
+
+Campaign activity is stored as fixed-size pages (`DataKey::CampaignActivitiesPage(campaign_id, page)`, 100 records per page) plus a page-count key, so appends only touch the current page and no single ledger entry grows unbounded.
+
+### Farmer Campaign Functions
+
+- `get_campaigns_by_farmer(farmer: Address) -> Vec<u64>` - Get all campaign ids for a farmer (concatenates every page; for bounded reads use the paged getters below)
+- `get_farmer_campaigns_page_count(farmer: Address) -> u32` - Number of campaign-id pages (0-based indices `0..page_count`)
+- `get_campaigns_by_farmer_page(farmer: Address, page: u32) -> Vec<u64>` - One page (at most 100 ids) of the farmer's campaign list
+
+A farmer's campaign list is likewise stored as fixed-size pages (`DataKey::FarmerCampaignsPage(farmer, page)`, 100 ids per page) plus a page-count key.
 
 ### Activity Action Types
 

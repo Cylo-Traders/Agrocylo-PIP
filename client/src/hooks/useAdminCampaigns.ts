@@ -7,7 +7,8 @@ import {
   isEscrowConfigured,
 } from '../lib/soroban/config';
 import { contractQueryKeys } from './contract/queryKeys';
-import type { Campaign, CampaignStatusTag } from '../lib/soroban/types';
+import { ACTIONABLE_STATUSES } from '../lib/campaignStatus';
+import type { Campaign } from '../lib/soroban/types';
 
 const DEFAULT_LOOKBACK_LEDGERS = 120_000;
 
@@ -18,15 +19,7 @@ const LOOKBACK_LEDGERS = (() => {
     : DEFAULT_LOOKBACK_LEDGERS;
 })();
 
-/** Statuses where at least one of the five admin actions is applicable. */
-const ACTIONABLE_STATUSES: CampaignStatusTag[] = [
-  'Active',
-  'Funding',
-  'Funded',
-  'InProduction',
-  'Harvested',
-  'Disputed',
-];
+export { ACTIONABLE_STATUSES };
 
 export interface AdminCampaignOverview {
   id: string;

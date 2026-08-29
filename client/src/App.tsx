@@ -7,6 +7,8 @@ import { AnalyticsDashboardPage } from './pages/AnalyticsDashboardPage';
 import { AdminDashboardPage } from './pages/AdminDashboardPage';
 import { ActivityFeedPage } from './pages/ActivityFeedPage';
 import { CampaignDetailPage } from './pages/CampaignDetailPage';
+import { CampaignsPage } from './pages/CampaignsPage';
+import { FarmerProfilePage } from './pages/FarmerProfilePage';
 import './App.css';
 
 export default function App() {
@@ -52,7 +54,10 @@ export default function App() {
       {/* AppLayout routes */}
       <Route element={<AppLayout />}>
         <Route path="/activity" element={<ActivityFeedPage />} />
+        <Route path="/campaigns" element={<CampaignsPage />} />
         <Route path="/campaigns/:id" element={<CampaignDetailPage />} />
+        <Route path="/profile" element={<FarmerProfilePage />} />
+        <Route path="/farmers/:address" element={<FarmerProfilePage />} />
       </Route>
     </Routes>
   );

@@ -7,7 +7,17 @@ This document describes how the `ProductionEscrowContract` and `RegistryContract
 - **ProductionEscrowContract** owns campaign financial state (funding, escrow, disputes, settlements) and emits canonical events for every state change.
 - **RegistryContract** owns the audit trail of campaign activities and access-control lists (admin, approved contracts). It is the source of truth for *who* did *what* and *when*.
 
-In the intended integration, `ProductionEscrowContract` (or an authorized backend service acting on its behalf) calls `RegistryContract::record_activity` after each significant lifecycle step. The `ProductionEscrowContract` address must first be registered in the `RegistryContract` via `approve_contract`.
+`ProductionEscrowContract` now calls `RegistryContract` directly on-chain after each significant lifecycle step (`create_campaign`, `fund_campaign` reaching `Funded`, `release_tranche` reaching `InProduction`, `report_harvest`, `open_dispute`, `resolve_dispute`, `settle_campaign`, `mark_failed`): it invokes `record_activity` with the matching `ActivityAction`, and `update_campaign_status` whenever the transition changes `Campaign.status`. `create_campaign` also calls `link_campaign_escrow` so the registry has a `CampaignRecord` to update.
+
+This is opt-in per escrow instance: admin calls `ProductionEscrowContract::set_registry(registry_address)` once. Until that's called, escrow makes zero cross-contract calls (this is what keeps every pre-existing escrow/registry test passing unmodified). The `ProductionEscrowContract` address must still be registered in the `RegistryContract` via `approve_contract` for `update_campaign_status` to authorize it as the campaign's registered escrow (see "Cross-contract call failure semantics" below for what happens if it isn't).
+
+**Implementation note:** `registry` already depends on `production_escrow` as a crate (for `reconcile_campaign_status`'s cross-contract read), so `production_escrow` cannot take a normal crate dependency on `registry` without a circular dependency. The escrow-to-registry calls are therefore made via `env.invoke_contract` with hand-encoded arguments (see `notify_registry` in `production_escrow/src/lib.rs`), not the generated `RegistryContractClient`.
+
+### Cross-contract call failure semantics: rollback, not best-effort
+
+If the registry call fails for any reason -- most commonly, the escrow contract was never `approve_contract`'d, so `update_campaign_status` panics with `"unauthorized: caller is not the registered escrow contract or admin"` -- **the entire escrow transaction aborts**. `notify_registry` uses `env.invoke_contract` directly (not a try/catch-style `try_invoke_contract`), so a registry-side panic propagates up through the escrow call and the whole transaction, including the escrow-side state change that triggered it, is rolled back atomically by the Soroban host.
+
+This was a deliberate choice over best-effort/non-blocking: silently swallowing a registry failure would let escrow and registry state diverge silently (the exact "Failure mode" described below), with no signal to the caller that anything went wrong. Rollback means a misconfigured registry link fails loudly and immediately, at the call that caused it, with a caller-visible panic message -- not weeks later when someone notices `get_campaign_activities` is empty.
 
 ## Contract Responsibilities
 
@@ -33,7 +43,7 @@ In the intended integration, `ProductionEscrowContract` (or an authorized backen
 | Admin management | `initialize`, `update_admin`, `get_admin` |
 | Approved-contract allowlist | `approve_contract`, `revoke_contract`, `is_contract_approved` |
 | Recording campaign audit activities | `record_activity` |
-| Retrieving campaign activity history | `get_campaign_activities` |
+| Retrieving campaign activity history | `get_campaign_activities` (all pages), `get_campaign_activities_page` / `get_campaign_activity_page_count` (bounded paged reads) |
 | Event emission for registry changes | Soroban events (see table below) |
 
 ## State Ownership
@@ -42,7 +52,7 @@ In the intended integration, `ProductionEscrowContract` (or an authorized backen
 |-------|-------|--------------|-------------|
 | Admin address | RegistryContract | Instance | `DataKey::Admin` |
 | Approved contract list | RegistryContract | Instance | `DataKey::ApprovedContract(Address)` |
-| Campaign activity history | RegistryContract | Persistent | `DataKey::CampaignActivities(u64)` |
+| Campaign activity history | RegistryContract | Persistent | `DataKey::CampaignActivitiesPage(u64, u32)` + `DataKey::CampaignActivitiesPageCount(u64)` (100 records/page) |
 | Campaign metadata (farmer, target, token, deadline, harvest) | ProductionEscrowContract | Persistent | `DataKey::Campaign(u64)` |
 | Campaign financials (`total_funded`, `released`, `refundable`) | ProductionEscrowContract | Persistent | Inside `Campaign` struct |
 | Campaign status | ProductionEscrowContract | Persistent | `Campaign.status` (`CampaignStatus`) |
@@ -50,6 +60,30 @@ In the intended integration, `ProductionEscrowContract` (or an authorized backen
 | Dispute record | ProductionEscrowContract | Persistent | `DataKey::Dispute(u64)` |
 
 > **Rule of thumb:** Financial and dispute state lives in `ProductionEscrowContract`. Audit and access-control state lives in `RegistryContract`.
+
+## Registry Status Mirror: Consistency Dependency and Failure Modes
+
+The registry's `CampaignRecord.status` is a **mirror** of the escrow's authoritative `Campaign.status`, kept in sync by `update_campaign_status`.
+
+**This dependency is off-chain and not enforced on-chain.** `ProductionEscrowContract` has no dependency on, and never calls into, the `registry` crate. Every mirror update depends entirely on an external orchestrator (or an approved contract) calling `RegistryContract::update_campaign_status` / `record_activity` after each escrow transition, in the correct order.
+
+### Failure mode
+
+If the orchestrator crashes between an escrow transition and the corresponding registry call, is buggy, or is simply never deployed for a given environment, `CampaignRecord.status` silently and permanently diverges from the escrow's real `Campaign.status`. There is no on-chain signal that this has happened.
+
+**Detecting drift:** compare `ProductionEscrowContract::get_campaign(id).status` against `RegistryContract::get_campaign_record(id).status` for the same `campaign_id`. Any mismatch is drift.
+
+### Decision: on-chain reconciliation, not a full redesign
+
+Rather than having `ProductionEscrowContract` take a registry address at `initialize` and call into the registry directly on every lifecycle method (a larger architectural change, and a new coupling of escrow -> registry that was deliberately avoided), the registry exposes a permissionless self-heal entry point:
+
+```
+RegistryContract::reconcile_campaign_status(campaign_id: u64) -> bool
+```
+
+This makes a cross-contract call from the registry into the campaign's linked `ProductionEscrowContract::get_campaign`, reads the real on-chain status, and corrects the mirror if it has drifted. No caller authorization is required -- the call does not trust anything the caller supplies, only what the escrow contract itself reports, so it is safe for anyone (a monitoring bot, a farmer, an investor) to call at any time. It emits a distinct `CampaignStatusReconciled` event (not `CampaignStatusUpdated`) so indexers and monitoring can flag every drift occurrence separately from normal orchestrator-driven updates.
+
+Operationally: run `reconcile_campaign_status` on a schedule (e.g. as part of the same monitoring job that detects drift above), and also call it opportunistically before trusting `get_campaign_record` for any campaign whose orchestrator health is uncertain.
 
 ## Rounding / Dust Policy
 
@@ -328,6 +362,7 @@ Investor 2
 - `is_contract_approved(env: Env, contract: Address) -> bool`
 - `record_activity(env: Env, campaign_id: u64, actor: Address, action_type: ActivityAction)`
 - `get_campaign_activities(env: Env, campaign_id: u64) -> Vec<ActivityRecord>`
+- `reconcile_campaign_status(env: Env, campaign_id: u64) -> bool` (permissionless; self-heals status drift against the escrow contract)
 
 ## Acceptance Criteria Checklist
 
