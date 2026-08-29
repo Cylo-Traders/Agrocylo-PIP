@@ -3,7 +3,10 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ActivityRecord } from '../lib/soroban/types';
-import { formatActivityLine, getActivityMeta } from '../lib/activity/activityLabels';
+import {
+  formatActivityLine,
+  getActivityMeta,
+} from '../lib/activity/activityLabels';
 import type { ActivityActionTag } from '../lib/soroban/types';
 
 // ---------------------------------------------------------------------------
@@ -44,7 +47,9 @@ function makeQueryClient() {
 
 function Wrapper({ children }: { children: React.ReactNode }) {
   return (
-    <QueryClientProvider client={makeQueryClient()}>{children}</QueryClientProvider>
+    <QueryClientProvider client={makeQueryClient()}>
+      {children}
+    </QueryClientProvider>
   );
 }
 
@@ -76,7 +81,6 @@ describe('getActivityMeta', () => {
   });
 
   it('returns fallback for unknown tag', () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const meta = getActivityMeta('UnknownAction' as any);
     expect(meta.label).toBe('UnknownAction');
     expect(meta.icon).toBe('•');
@@ -98,9 +102,15 @@ describe('formatActivityLine', () => {
 
   it('produces non-empty string for every action tag', () => {
     const tags: ActivityActionTag[] = [
-      'CampaignCreated', 'CampaignFunded', 'CampaignStatusChanged',
-      'FundsReleased', 'HarvestReported', 'DisputeInitiated',
-      'DisputeResolved', 'CampaignSettled', 'FarmerRegistered',
+      'CampaignCreated',
+      'CampaignFunded',
+      'CampaignStatusChanged',
+      'FundsReleased',
+      'HarvestReported',
+      'DisputeInitiated',
+      'DisputeResolved',
+      'CampaignSettled',
+      'FarmerRegistered',
       'CampaignRegistered',
     ];
     for (const tag of tags) {
@@ -118,26 +128,37 @@ describe('ActivityFeedItem', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('renders the action tag badge and human-readable line', async () => {
-    const { ActivityFeedItem } = await import('../components/campaign/ActivityFeed/ActivityFeedItem');
+    const { ActivityFeedItem } =
+      await import('../components/campaign/ActivityFeed/ActivityFeedItem');
     const record = makeRecord('HarvestReported');
 
     render(
       <Wrapper>
-        <ul><ActivityFeedItem record={record} campaignId={1n} /></ul>
+        <ul>
+          <ActivityFeedItem record={record} campaignId={1n} />
+        </ul>
       </Wrapper>,
     );
 
+    // The badge carries the action label; the sentence underneath comes from
+    // formatActivityLine ("<actor> reported harvest on Campaign #1"). They are
+    // separate elements, so assert them separately.
     expect(screen.getByText('Harvest reported')).toBeInTheDocument();
-    expect(screen.getByText(/Harvest reported.*Campaign #1/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/reported harvest on Campaign #1/i),
+    ).toBeInTheDocument();
   });
 
   it('renders a <time> element with an ISO dateTime attribute', async () => {
-    const { ActivityFeedItem } = await import('../components/campaign/ActivityFeed/ActivityFeedItem');
+    const { ActivityFeedItem } =
+      await import('../components/campaign/ActivityFeed/ActivityFeedItem');
     const record = makeRecord('FarmerRegistered');
 
     render(
       <Wrapper>
-        <ul><ActivityFeedItem record={record} /></ul>
+        <ul>
+          <ActivityFeedItem record={record} />
+        </ul>
       </Wrapper>,
     );
 
@@ -156,7 +177,8 @@ describe('ActivityFeed', () => {
 
   it('renders loading spinner while fetching', async () => {
     mockGetCampaignActivities.mockReturnValue(new Promise(() => {}));
-    const { ActivityFeed } = await import('../components/campaign/ActivityFeed/ActivityFeed');
+    const { ActivityFeed } =
+      await import('../components/campaign/ActivityFeed/ActivityFeed');
 
     render(
       <Wrapper>
@@ -164,12 +186,15 @@ describe('ActivityFeed', () => {
       </Wrapper>,
     );
 
-    expect(screen.getByRole('status', { name: /loading/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole('status', { name: /loading/i }),
+    ).toBeInTheDocument();
   });
 
   it('renders "No activity" when the contract returns an empty list', async () => {
     mockGetCampaignActivities.mockResolvedValue([]);
-    const { ActivityFeed } = await import('../components/campaign/ActivityFeed/ActivityFeed');
+    const { ActivityFeed } =
+      await import('../components/campaign/ActivityFeed/ActivityFeed');
 
     render(
       <Wrapper>
@@ -189,7 +214,8 @@ describe('ActivityFeed', () => {
       makeRecord('CampaignFunded', undefined, 50),
     ];
     mockGetCampaignActivities.mockResolvedValue(records);
-    const { ActivityFeed } = await import('../components/campaign/ActivityFeed/ActivityFeed');
+    const { ActivityFeed } =
+      await import('../components/campaign/ActivityFeed/ActivityFeed');
 
     render(
       <Wrapper>
@@ -197,9 +223,7 @@ describe('ActivityFeed', () => {
       </Wrapper>,
     );
 
-    await waitFor(() =>
-      expect(screen.getAllByRole('listitem').length).toBe(3),
-    );
+    await waitFor(() => expect(screen.getAllByRole('listitem').length).toBe(3));
 
     const items = screen.getAllByRole('listitem');
     // HarvestReported (offset=100) should be first (newest)
@@ -211,7 +235,8 @@ describe('ActivityFeed', () => {
       makeRecord('CampaignFunded', undefined, i),
     );
     mockGetCampaignActivities.mockResolvedValue(records);
-    const { ActivityFeed } = await import('../components/campaign/ActivityFeed/ActivityFeed');
+    const { ActivityFeed } =
+      await import('../components/campaign/ActivityFeed/ActivityFeed');
 
     render(
       <Wrapper>
@@ -220,7 +245,9 @@ describe('ActivityFeed', () => {
     );
 
     await waitFor(() =>
-      expect(screen.getByRole('navigation', { name: /pagination/i })).toBeInTheDocument(),
+      expect(
+        screen.getByRole('navigation', { name: /pagination/i }),
+      ).toBeInTheDocument(),
     );
 
     expect(screen.getByText(/page 1 of 3/i)).toBeInTheDocument();
@@ -234,7 +261,8 @@ describe('ActivityFeed', () => {
       makeRecord('CampaignFunded', undefined, i),
     );
     mockGetCampaignActivities.mockResolvedValue(records);
-    const { ActivityFeed } = await import('../components/campaign/ActivityFeed/ActivityFeed');
+    const { ActivityFeed } =
+      await import('../components/campaign/ActivityFeed/ActivityFeed');
 
     render(
       <Wrapper>
@@ -252,7 +280,8 @@ describe('ActivityFeed', () => {
 
   it('shows error message when fetch fails', async () => {
     mockGetCampaignActivities.mockRejectedValue(new Error('Network error'));
-    const { ActivityFeed } = await import('../components/campaign/ActivityFeed/ActivityFeed');
+    const { ActivityFeed } =
+      await import('../components/campaign/ActivityFeed/ActivityFeed');
 
     render(
       <Wrapper>
@@ -260,16 +289,19 @@ describe('ActivityFeed', () => {
       </Wrapper>,
     );
 
-    await waitFor(() =>
-      expect(screen.getByRole('alert')).toBeInTheDocument(),
+    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      /failed to load activity/i,
     );
-    expect(screen.getByRole('alert')).toHaveTextContent(/failed to load activity/i);
   });
 
   it('renders Refresh button that triggers re-fetch', async () => {
     const user = userEvent.setup();
-    mockGetCampaignActivities.mockResolvedValue([makeRecord('CampaignCreated')]);
-    const { ActivityFeed } = await import('../components/campaign/ActivityFeed/ActivityFeed');
+    mockGetCampaignActivities.mockResolvedValue([
+      makeRecord('CampaignCreated'),
+    ]);
+    const { ActivityFeed } =
+      await import('../components/campaign/ActivityFeed/ActivityFeed');
 
     render(
       <Wrapper>
@@ -278,12 +310,16 @@ describe('ActivityFeed', () => {
     );
 
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: /refresh/i })).toBeInTheDocument(),
+      expect(
+        screen.getByRole('button', { name: /refresh/i }),
+      ).toBeInTheDocument(),
     );
 
     await user.click(screen.getByRole('button', { name: /refresh/i }));
     // No crash and button still present
-    expect(screen.getByRole('button', { name: /refresh/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /refresh/i }),
+    ).toBeInTheDocument();
   });
 
   it('global feed aggregates records from multiple campaign IDs', async () => {
@@ -291,7 +327,8 @@ describe('ActivityFeed', () => {
       .mockResolvedValueOnce([makeRecord('CampaignCreated', undefined, 0)])
       .mockResolvedValueOnce([makeRecord('HarvestReported', undefined, 100)]);
 
-    const { ActivityFeed } = await import('../components/campaign/ActivityFeed/ActivityFeed');
+    const { ActivityFeed } =
+      await import('../components/campaign/ActivityFeed/ActivityFeed');
 
     render(
       <Wrapper>
@@ -299,9 +336,7 @@ describe('ActivityFeed', () => {
       </Wrapper>,
     );
 
-    await waitFor(() =>
-      expect(screen.getAllByRole('listitem').length).toBe(2),
-    );
+    await waitFor(() => expect(screen.getAllByRole('listitem').length).toBe(2));
 
     expect(mockGetCampaignActivities).toHaveBeenCalledTimes(2);
   });

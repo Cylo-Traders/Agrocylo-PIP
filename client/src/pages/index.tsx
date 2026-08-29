@@ -2,9 +2,11 @@ import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 
 export { CampaignDetailPage } from './CampaignDetailPage';
+export { CampaignsPage } from './CampaignsPage';
 export { CreateCampaignPage } from './CreateCampaignPage';
 export { AdminDashboardPage } from './AdminDashboardPage';
 export { ActivityFeedPage } from './ActivityFeedPage';
+export { FarmerProfilePage } from './FarmerProfilePage';
 
 type PlaceholderPageProps = {
   eyebrow: string;
@@ -49,21 +51,6 @@ export function HomePage() {
   );
 }
 
-export function CampaignsPage() {
-  return (
-    <PlaceholderPage
-      eyebrow="Marketplace"
-      title="Campaigns"
-      description="Browse active and completed agricultural funding campaigns."
-      action={
-        <Link to="/campaigns/new" className={primaryLinkClass}>
-          Create a campaign
-        </Link>
-      }
-    />
-  );
-}
-
 export function FarmerDashboardPage() {
   return (
     <PlaceholderPage
@@ -85,16 +72,7 @@ export function InvestorDashboardPage() {
 }
 
 // ActivityFeedPage is the real implementation exported from ./ActivityFeedPage
-
-export function ProfilePage() {
-  return (
-    <PlaceholderPage
-      eyebrow="Your account"
-      title="Profile"
-      description="Manage your personal details, wallet preferences, and platform settings."
-    />
-  );
-}
+// FarmerProfilePage is the real implementation exported from ./FarmerProfilePage
 
 export function NotFoundPage() {
   return (

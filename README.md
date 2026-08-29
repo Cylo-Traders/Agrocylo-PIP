@@ -120,6 +120,24 @@ This platform integrates:
 - analytics engines
 - wallet-based transaction flows
 
+## Development Setup
+
+### Client
+
+```bash
+cd client
+npm ci
+```
+
+Run `npm ci` (not `npm install --ignore-scripts`): the `prepare` script wires Husky into the install and sets up the pre-commit hook, which runs `lint-staged` (`eslint --fix` + `prettier --write`) on staged files. Unformatted or lint-failing staged code is auto-fixed or blocks the commit.
+
+Useful client checks:
+
+- `npm run lint`
+- `npm run format:check`
+- `npm run typecheck`
+- `npm test`
+
 ## Contributing
 
 Contributions are welcome in:

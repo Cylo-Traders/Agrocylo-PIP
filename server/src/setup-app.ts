@@ -1,6 +1,7 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import helmet from 'helmet';
+import { CorsSocketIoAdapter } from './websocket/cors-socket-io.adapter';
 
 /**
  * Applies production-hardening middleware/pipes shared by the real bootstrap
@@ -18,6 +19,8 @@ export function configureApp(app: INestApplication): void {
     origin: corsAllowedOrigins,
     credentials: true,
   });
+
+  app.useWebSocketAdapter(new CorsSocketIoAdapter(app));
 
   app.useGlobalPipes(
     new ValidationPipe({

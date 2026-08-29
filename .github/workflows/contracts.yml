@@ -2,19 +2,31 @@ name: Contracts
 
 on:
   push:
-    branches: [master]
+    branches: [master, main]
     paths:
       - "contracts/**"
+      - ".github/workflows/contracts.yml"
   pull_request:
-    branches: [master]
+    branches: [master, main]
     paths:
       - "contracts/**"
+      - ".github/workflows/contracts.yml"
+
+# A newer push to the same PR cancels the previous run instead of queueing
+# behind it, so contributors see the result for their latest commit.
+concurrency:
+  group: contracts-${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
   build-and-test:
+    name: Format, clippy, build, test
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -27,11 +39,18 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
+          components: rustfmt, clippy
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: contracts
+
+      - name: Format check
+        run: cargo fmt --all --check
+
+      - name: Clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
 
       - name: Build (release)
         run: cargo build --target wasm32-unknown-unknown --release

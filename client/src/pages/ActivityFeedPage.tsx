@@ -14,13 +14,16 @@ function parseCampaignIds(raw: string): bigint[] {
     .map((s) => s.trim())
     .filter(Boolean)
     .flatMap((s) => {
-      try { return [BigInt(s)]; } catch { return []; }
+      try {
+        return [BigInt(s)];
+      } catch {
+        return [];
+      }
     });
 }
 
 const envIds: bigint[] = parseCampaignIds(
-  (import.meta as Record<string, unknown> & { env?: Record<string, string> })
-    .env?.VITE_KNOWN_CAMPAIGN_IDS ?? '',
+  import.meta.env.VITE_KNOWN_CAMPAIGN_IDS ?? '',
 );
 
 export function ActivityFeedPage() {
@@ -42,18 +45,30 @@ export function ActivityFeedPage() {
   return (
     <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6 lg:px-8">
       <header className="mb-6">
-        <p className="text-sm font-semibold uppercase tracking-wide" style={{ color: 'var(--color-leaf-700, #15803d)' }}>
+        <p
+          className="text-sm font-semibold uppercase tracking-wide"
+          style={{ color: 'var(--color-leaf-700, #15803d)' }}
+        >
           Platform updates
         </p>
-        <h1 className="mt-1 text-2xl font-bold" style={{ color: 'var(--color-soil-950, #0c0a09)' }}>
+        <h1
+          className="mt-1 text-2xl font-bold"
+          style={{ color: 'var(--color-soil-950, #0c0a09)' }}
+        >
           Activity Feed
         </h1>
-        <p className="mt-1 text-sm" style={{ color: 'var(--color-soil-600, #57534e)' }}>
+        <p
+          className="mt-1 text-sm"
+          style={{ color: 'var(--color-soil-600, #57534e)' }}
+        >
           Follow the latest campaign, funding, milestone, and settlement events.
         </p>
       </header>
 
-      <form onSubmit={handleSubmit} className="mb-6 flex gap-2 items-end flex-wrap">
+      <form
+        onSubmit={handleSubmit}
+        className="mb-6 flex gap-2 items-end flex-wrap"
+      >
         <div className="flex flex-col gap-1 flex-1 min-w-[200px]">
           <label
             htmlFor={inputId}
@@ -91,7 +106,10 @@ export function ActivityFeedPage() {
               borderColor: 'var(--color-soil-200, #e7e5e4)',
               color: 'var(--color-soil-600, #57534e)',
             }}
-            onClick={() => { setSubmitted(''); setInputValue(''); }}
+            onClick={() => {
+              setSubmitted('');
+              setInputValue('');
+            }}
           >
             Clear
           </button>
@@ -107,20 +125,29 @@ export function ActivityFeedPage() {
           }}
         >
           Enter one or more campaign IDs above to view activity, or configure{' '}
-          <code className="rounded bg-slate-100 px-1 py-0.5 text-xs">VITE_KNOWN_CAMPAIGN_IDS</code>{' '}
+          <code className="rounded bg-slate-100 px-1 py-0.5 text-xs">
+            VITE_KNOWN_CAMPAIGN_IDS
+          </code>{' '}
           to preload the global feed.
         </div>
       ) : (
         <div
           className="rounded-xl border p-6"
-          style={{ borderColor: 'var(--color-soil-200, #e7e5e4)', background: 'white' }}
+          style={{
+            borderColor: 'var(--color-soil-200, #e7e5e4)',
+            background: 'white',
+          }}
         >
           <ActivityFeed
             campaignId={scoped}
             campaignIds={scoped === undefined ? campaignIds : []}
             pageSize={10}
             refreshIntervalMs={30_000}
-            title={scoped !== undefined ? `Campaign #${scoped} Activity` : 'All Activity'}
+            title={
+              scoped !== undefined
+                ? `Campaign #${scoped} Activity`
+                : 'All Activity'
+            }
           />
         </div>
       )}

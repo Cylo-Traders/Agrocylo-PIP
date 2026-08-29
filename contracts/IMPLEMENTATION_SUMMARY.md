@@ -29,6 +29,7 @@ Implementation includes:
 - Captures ledger timestamp and sequence number automatically
 - Stores records in persistent storage with TTL management
 - Returns deterministic ordering (chronological by insertion)
+- Stores the log as fixed-size pages (`CampaignActivitiesPage(campaign_id, page)`, 100 records/page, plus a page-count key) so appends only rewrite the current page and no single ledger entry grows unbounded (Issue #157)
 
 #### 3. Access Control for Activity Writes
 **Location:** `registry/src/activity.rs` - `require_authorized()`
@@ -43,7 +44,8 @@ Authorization logic:
 **Location:** `registry/src/activity.rs`
 
 Implementation:
-- `get_campaign_activities()`: Returns all activities for a campaign
+- `get_campaign_activities()`: Returns all activities for a campaign (concatenates every page)
+- `get_campaign_activities_page()` / `get_campaign_activity_page_count()`: bounded, paginated reads
 - Records returned in deterministic chronological order
 - Empty vector returned for campaigns with no activities
 
@@ -185,7 +187,6 @@ The Registry Contract is designed to integrate with:
 Potential improvements for future iterations:
 
 - Activity filtering by action type or date range
-- Pagination for campaigns with many activities
 - Activity metadata or notes field
 - Multi-admin or role-based access control
 - Activity record versioning or amendments

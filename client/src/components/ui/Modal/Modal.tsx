@@ -50,60 +50,62 @@ export const Modal: React.FC<ModalProps> = ({
   const closeButtonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
-    if (isOpen) {
-      // Store currently focused element
-      previousActiveElement.current = document.activeElement as HTMLElement;
-      // Lock scroll
-      document.body.style.overflow = 'hidden';
+    if (!isOpen) {
+      return;
+    }
 
-      // Focus the close button or modal container for accessibility
-      setTimeout(() => {
-        if (closeButtonRef.current) {
-          closeButtonRef.current.focus();
-        } else if (modalContainerRef.current) {
-          modalContainerRef.current.focus();
-        }
-      }, 50);
+    // Store currently focused element
+    previousActiveElement.current = document.activeElement as HTMLElement;
+    // Lock scroll
+    document.body.style.overflow = 'hidden';
 
-      // Setup escape key listener
-      const handleKeyDown = (event: KeyboardEvent) => {
-        if (event.key === 'Escape') {
-          onClose();
-        }
-        // Focus trapping helper: Tab key looping
-        if (event.key === 'Tab' && modalContainerRef.current) {
-          const focusableElements =
-            modalContainerRef.current.querySelectorAll<HTMLElement>(
-              'a[href], area[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled]), iframe, object, embed, [tabindex="0"], [contenteditable]',
-            );
-          if (focusableElements.length > 0) {
-            const firstElement = focusableElements[0];
-            const lastElement = focusableElements[focusableElements.length - 1];
+    // Focus the close button or modal container for accessibility
+    setTimeout(() => {
+      if (closeButtonRef.current) {
+        closeButtonRef.current.focus();
+      } else if (modalContainerRef.current) {
+        modalContainerRef.current.focus();
+      }
+    }, 50);
 
-            if (event.shiftKey) {
-              if (document.activeElement === firstElement) {
-                lastElement.focus();
-                event.preventDefault();
-              }
-            } else {
-              if (document.activeElement === lastElement) {
-                firstElement.focus();
-                event.preventDefault();
-              }
+    // Setup escape key listener
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        onClose();
+      }
+      // Focus trapping helper: Tab key looping
+      if (event.key === 'Tab' && modalContainerRef.current) {
+        const focusableElements =
+          modalContainerRef.current.querySelectorAll<HTMLElement>(
+            'a[href], area[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled]), iframe, object, embed, [tabindex="0"], [contenteditable]',
+          );
+        if (focusableElements.length > 0) {
+          const firstElement = focusableElements[0];
+          const lastElement = focusableElements[focusableElements.length - 1];
+
+          if (event.shiftKey) {
+            if (document.activeElement === firstElement) {
+              lastElement.focus();
+              event.preventDefault();
+            }
+          } else {
+            if (document.activeElement === lastElement) {
+              firstElement.focus();
+              event.preventDefault();
             }
           }
         }
-      };
+      }
+    };
 
-      window.addEventListener('keydown', handleKeyDown);
-      return () => {
-        window.removeEventListener('keydown', handleKeyDown);
-        document.body.style.overflow = '';
-        if (previousActiveElement.current) {
-          previousActiveElement.current.focus();
-        }
-      };
-    }
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = '';
+      if (previousActiveElement.current) {
+        previousActiveElement.current.focus();
+      }
+    };
   }, [isOpen, onClose]);
 
   if (!isOpen) return null;

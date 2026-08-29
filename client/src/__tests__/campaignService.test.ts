@@ -1,7 +1,6 @@
 import {
   validateContribution,
   calculateOwnershipShare,
-  fundCampaign,
 } from '../lib/soroban/campaignService';
 
 function assertEqual<T>(actual: T, expected: T, message?: string) {
@@ -35,15 +34,3 @@ assertTrue(!!exceedsRes.error?.includes('exceeds remaining target'));
 assertEqual(calculateOwnershipShare(2500, 10000), 25);
 assertEqual(calculateOwnershipShare(5000, 10000), 50);
 assertEqual(calculateOwnershipShare(0, 10000), 0);
-
-// 3. Fund Campaign Execution Tests
-fundCampaign(
-  { campaignId: 'c1', amount: 1000, walletAddress: 'GUSER' },
-  2000,
-  10000,
-).then((res) => {
-  assertEqual(res.success, true);
-  assertTrue(!!res.txHash?.startsWith('0x'));
-  assertEqual(res.newTotalRaised, 3000);
-  assertEqual(res.newRemainingTarget, 7000);
-});

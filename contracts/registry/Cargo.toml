@@ -8,9 +8,12 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 soroban-sdk = { workspace = true }
+# Types only — see src/escrow.rs for why the escrow *contract* crate must not
+# be linked into this one.
+escrow_types = { path = "../escrow_types" }
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
 
 [features]
-testutils = ["soroban-sdk/testutils"]
+testutils = ["soroban-sdk/testutils", "escrow_types/testutils"]
