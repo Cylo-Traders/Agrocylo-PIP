@@ -45,11 +45,11 @@ acceptance criterion in this sandboxed environment:
 
 ### 1. Color contrast (status badges + primary text)
 
-| Location | Before | After | Ratio before → after |
-|---|---|---|---|
-| `components/ui/Badge/Badge.css` — 9 status variants + 5 generic variants | text colors as light as `hsl(x, y%, 30-45%)` over a 10%-alpha fill | darkened lightness per-hue (see inline comment in the file) | as low as **2.75:1** → all ≥ **4.6:1** against both white and `soil-50` page backgrounds |
-| `text-soil-400` / `text-soil-500` used as real copy (captions, labels, hints, dt/dd pairs) across `Header`, `StatTile`, `ChartCard`, `ComingSoonCard`, `LifecycleStepper`, `CreateCampaignPage`, `DesignFoundationsPage`, `AppLayout` | `soil-400` **2.98:1**, `soil-500` **4.10:1** on white | bumped to `soil-600` | **≥ 5.96:1** |
-| `FundCampaignModal` / `CampaignDetailPage` / `InvestorDashboardPage` / `InvestmentCard` / `InvestorSummaryStats` — a second, independent Tailwind-default (slate/emerald/amber) design system used only in these files | `text-slate-400` **2.56:1**; primary CTA buttons `bg-emerald-600` white text **3.77:1**; `bg-amber-600` white text **3.19:1** | `slate-400`→`slate-600`; buttons →`emerald-700`/`amber-700` (hover `-800`) | **≥ 4.66:1** (text), **≥ 5.02:1** (buttons) |
+| Location                                                                                                                                                                                                                              | Before                                                                                                                        | After                                                                      | Ratio before → after                                                                     |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `components/ui/Badge/Badge.css` — 9 status variants + 5 generic variants                                                                                                                                                              | text colors as light as `hsl(x, y%, 30-45%)` over a 10%-alpha fill                                                            | darkened lightness per-hue (see inline comment in the file)                | as low as **2.75:1** → all ≥ **4.6:1** against both white and `soil-50` page backgrounds |
+| `text-soil-400` / `text-soil-500` used as real copy (captions, labels, hints, dt/dd pairs) across `Header`, `StatTile`, `ChartCard`, `ComingSoonCard`, `LifecycleStepper`, `CreateCampaignPage`, `DesignFoundationsPage`, `AppLayout` | `soil-400` **2.98:1**, `soil-500` **4.10:1** on white                                                                         | bumped to `soil-600`                                                       | **≥ 5.96:1**                                                                             |
+| `FundCampaignModal` / `CampaignDetailPage` / `InvestorDashboardPage` / `InvestmentCard` / `InvestorSummaryStats` — a second, independent Tailwind-default (slate/emerald/amber) design system used only in these files                | `text-slate-400` **2.56:1**; primary CTA buttons `bg-emerald-600` white text **3.77:1**; `bg-amber-600` white text **3.19:1** | `slate-400`→`slate-600`; buttons →`emerald-700`/`amber-700` (hover `-800`) | **≥ 4.66:1** (text), **≥ 5.02:1** (buttons)                                              |
 
 `dark:` variants in the slate/emerald files were **not** changed — they
 already passed (6.9–17.8:1) since Tailwind's default dark-mode palette
@@ -61,15 +61,16 @@ Two large (`text-2xl font-bold`, 24px) stat values using `amber-600`/
 as WCAG "large text," where the threshold is 3:1, and they measure 3.19:1
 and 3.77:1 respectively — already compliant.
 
-**Note:** `FundCampaignModal.tsx` and `CampaignDetailPage.tsx` use a
-Tailwind slate/emerald palette instead of the earth-tone `soil`/`leaf`/
-`status-*` tokens used everywhere else in the app — this is exactly the
+**Note (resolved by issue #148, see the follow-up section below):**
+`FundCampaignModal.tsx` and `CampaignDetailPage.tsx` used a Tailwind
+slate/emerald palette instead of the earth-tone `soil`/`leaf`/`status-*`
+tokens used everywhere else in the app — this was exactly the
 "independently-built pages regress accessibility" failure mode issue #65
 describes. `CampaignDetailPage`'s status pill was also hardcoded to green
 regardless of actual campaign status; it now uses the shared, contrast-
-verified `<StatusBadge>` component instead. Fully unifying the two design
-systems is a larger change than an a11y/contrast fix and is called out as a
-follow-up below rather than attempted here.
+verified `<StatusBadge>` component instead. At the time this audit was
+written, fully unifying the two design systems was called out as a
+follow-up rather than attempted here — that migration has since landed.
 
 ### 2. Keyboard navigation — campaign funding flow
 
@@ -85,6 +86,7 @@ instead of duplicating dialog chrome, which fixes all of the above for
 free and is verified by the four keyboard tests described above.
 
 Additional fixes in the same flow:
+
 - `CampaignDetailPage`'s progress bar had no accessible role/value; added
   `role="progressbar"` with `aria-valuenow`/`aria-valuemin`/`aria-valuemax`/
   `aria-label`.
@@ -110,11 +112,11 @@ Additional fixes in the same flow:
 
 ### 3. Responsive layout at 360px
 
-| Location | Problem | Fix |
-|---|---|---|
-| `DesignFoundationsPage` palette swatch rows | 11 fixed 32px swatches + gaps = ~392px in a non-wrapping flex row, inside a 312px-wide content area at 360px viewport → horizontal overflow | added `flex-wrap` |
-| `Header`'s wallet-connection error panel | `absolute right-6 ... max-w-sm` (384px) could exceed a 360px viewport | now `inset-x-4` (fluid, clamped to viewport minus margin) below the `sm` breakpoint, restoring the original floating position at `sm:` and up |
-| `Header` nav row | no wrap fallback if the logo + connected-wallet chip + disconnect button ever exceeded available width | added `flex-wrap` as a safety margin |
+| Location                                    | Problem                                                                                                                                     | Fix                                                                                                                                           |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DesignFoundationsPage` palette swatch rows | 11 fixed 32px swatches + gaps = ~392px in a non-wrapping flex row, inside a 312px-wide content area at 360px viewport → horizontal overflow | added `flex-wrap`                                                                                                                             |
+| `Header`'s wallet-connection error panel    | `absolute right-6 ... max-w-sm` (384px) could exceed a 360px viewport                                                                       | now `inset-x-4` (fluid, clamped to viewport minus margin) below the `sm` breakpoint, restoring the original floating position at `sm:` and up |
+| `Header` nav row                            | no wrap fallback if the logo + connected-wallet chip + disconnect button ever exceeded available width                                      | added `flex-wrap` as a safety margin                                                                                                          |
 
 Other primary pages (`AnalyticsDashboardPage`, `CreateCampaignPage`,
 `CampaignDetailPage`, `InvestorDashboardPage`, `InvestmentCard`) were
@@ -125,6 +127,7 @@ changes were needed there.
 ### 4. Automated regression test
 
 `src/__tests__/accessibility.test.tsx` adds:
+
 - 4 `jest-axe` scans (DOM/ARIA structural checks) across the audited routes
   and the funding modal.
 - 4 keyboard-navigation tests for the funding flow (dialog focus, Tab trap,
@@ -148,11 +151,24 @@ issue indefinitely").
 Two smaller items are noted but intentionally not fixed here, to keep this
 PR scoped to accessibility/responsive behavior rather than expanding into
 unrelated feature or architecture work:
+
 - `CreateCampaignPage`/`CampaignDetailPage`/`FundCampaignModal` aren't wired
   into `App.tsx`'s router yet (a pre-existing gap, not introduced by this
   PR) — their accessibility was verified by rendering them directly in
   tests/code review.
-- `FundCampaignModal`/`CampaignDetailPage`/`InvestorDashboardPage` use a
+- ~~`FundCampaignModal`/`CampaignDetailPage`/`InvestorDashboardPage` use a
   different Tailwind palette (slate/emerald) than the rest of the app
   (soil/leaf/status tokens); contrast was fixed in place, but unifying the
-  two design systems is a larger refactor than this audit's scope.
+  two design systems is a larger refactor than this audit's scope.~~
+  **Resolved (issue #148):** `FundCampaignModal.tsx`, `CampaignDetailPage.tsx`,
+  `InvestorDashboardPage.tsx`, `InvestmentCard.tsx`, and
+  `InvestorSummaryStats.tsx` were migrated off the slate/emerald palette onto
+  the shared `soil`/`leaf`/`status-*` tokens (`amber` is also a first-class
+  earth-tone token here, not raw Tailwind default, so warning banners keep
+  using it). `InvestmentCard`'s hand-rolled status pill was replaced with the
+  shared, contrast-verified `<StatusBadge>` component. The `dark:` variants
+  removed in the process were unused by the rest of the app (no other page
+  supports a dark theme), so this doesn't drop functionality, only the
+  inconsistency. Re-ran the jest-axe/contrast suite in
+  `src/__tests__/accessibility.test.tsx` after migration — all 8 assertions
+  still pass, confirming no contrast regression.
