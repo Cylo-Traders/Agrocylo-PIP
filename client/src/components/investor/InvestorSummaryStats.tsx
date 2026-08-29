@@ -12,38 +12,38 @@ export const InvestorSummaryStats: React.FC<InvestorSummaryStatsProps> = ({
 }) => {
   return (
     <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm">
-        <span className="text-xs font-medium text-slate-600 dark:text-slate-400 block uppercase tracking-wider">
+      <div className="rounded-campaign border border-soil-200 bg-white p-5 shadow-campaign dark:border-soil-800 dark:bg-soil-900">
+        <span className="text-label text-soil-600 dark:text-soil-400 block tracking-wider">
           Funded Projects
         </span>
-        <span className="text-2xl font-bold text-slate-900 dark:text-white mt-1 block">
+        <span className="text-2xl font-bold text-soil-900 dark:text-soil-50 mt-1 block">
           {totalCampaigns}
         </span>
       </div>
 
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm">
-        <span className="text-xs font-medium text-slate-600 dark:text-slate-400 block uppercase tracking-wider">
+      <div className="rounded-campaign border border-soil-200 bg-white p-5 shadow-campaign dark:border-soil-800 dark:bg-soil-900">
+        <span className="text-label text-soil-600 dark:text-soil-400 block tracking-wider">
           Total Contributed
         </span>
-        <span className="text-2xl font-bold text-slate-900 dark:text-white mt-1 block">
+        <span className="text-2xl font-bold text-soil-900 dark:text-soil-50 mt-1 block">
           ${stats.totalInvested.toLocaleString()}
         </span>
       </div>
 
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm">
-        <span className="text-xs font-medium text-slate-600 dark:text-slate-400 block uppercase tracking-wider">
+      <div className="rounded-campaign border border-soil-200 bg-white p-5 shadow-campaign dark:border-soil-800 dark:bg-soil-900">
+        <span className="text-label text-soil-600 dark:text-soil-400 block tracking-wider">
           Claimable / Pending
         </span>
-        <span className="text-2xl font-bold text-amber-600 dark:text-amber-400 mt-1 block">
+        <span className="text-2xl font-bold text-amber-700 dark:text-amber-400 mt-1 block">
           ${stats.totalPending.toLocaleString()}
         </span>
       </div>
 
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm">
-        <span className="text-xs font-medium text-slate-600 dark:text-slate-400 block uppercase tracking-wider">
+      <div className="rounded-campaign border border-soil-200 bg-white p-5 shadow-campaign dark:border-soil-800 dark:bg-soil-900">
+        <span className="text-label text-soil-600 dark:text-soil-400 block tracking-wider">
           Total Claimed
         </span>
-        <span className="text-2xl font-bold text-emerald-600 dark:text-emerald-400 mt-1 block">
+        <span className="text-2xl font-bold text-leaf-700 dark:text-leaf-400 mt-1 block">
           ${stats.totalClaimed.toLocaleString()}
         </span>
       </div>

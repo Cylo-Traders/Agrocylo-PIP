@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Modal } from '../ui/Modal/Modal';
+import { Button } from '../ui/Button/Button';
 import { useWallet } from '../../context/WalletContext';
 import { useFundCampaign } from '../../hooks/contract/useEscrowMutations';
 import {
@@ -111,7 +112,7 @@ export const FundCampaignModal: React.FC<FundCampaignModalProps> = ({
       title={
         <>
           Fund Campaign
-          <span className="mt-1 block text-sm font-normal text-slate-500 dark:text-slate-400">
+          <span className="mt-1 block text-sm font-normal text-soil-600 dark:text-soil-400">
             {campaignTitle}
           </span>
         </>
@@ -122,41 +123,43 @@ export const FundCampaignModal: React.FC<FundCampaignModalProps> = ({
       {successResult ? (
         <div className="space-y-4 py-2 text-center">
           <div
-            className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 text-2xl font-bold text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400"
+            className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-leaf-100 text-2xl font-bold text-leaf-700 dark:bg-leaf-950 dark:text-leaf-400"
             aria-hidden="true"
           >
             ✓
           </div>
-          <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
+          <h3 className="text-lg font-semibold text-soil-900 dark:text-soil-50">
             Contribution Successful!
           </h3>
-          <p className="text-sm text-slate-600 dark:text-slate-300">
+          <p className="text-sm text-soil-600 dark:text-soil-300">
             You contributed{' '}
-            <span className="font-semibold text-emerald-700 dark:text-emerald-400">
+            <span className="font-semibold text-leaf-700 dark:text-leaf-400">
               ${numAmount.toLocaleString()}
             </span>{' '}
             to {campaignTitle}.
           </p>
 
           {successResult.txHash && (
-            <div className="rounded-xl bg-slate-50 p-3 text-left dark:bg-slate-800/60">
-              <span className="block font-mono text-xs text-slate-600 dark:text-slate-400">
+            <div className="rounded-xl border border-soil-200 bg-soil-50 p-3 text-left dark:border-soil-800 dark:bg-soil-900/60">
+              <span className="block font-mono text-xs text-soil-600 dark:text-soil-400">
                 Transaction Status
               </span>
-              <span className="break-all font-mono text-xs text-slate-700 dark:text-slate-300">
+              <span className="break-all font-mono text-xs text-soil-700 dark:text-soil-300">
                 {successResult.txHash}
               </span>
             </div>
           )}
 
           <div className="pt-2">
-            <button
+            <Button
               type="button"
+              variant="primary"
+              size="lg"
               onClick={resetAndClose}
-              className="w-full rounded-xl bg-emerald-700 px-4 py-3 font-medium text-white transition hover:bg-emerald-800"
+              className="w-full"
             >
               Done
-            </button>
+            </Button>
           </div>
         </div>
       ) : (
@@ -166,27 +169,27 @@ export const FundCampaignModal: React.FC<FundCampaignModalProps> = ({
           {!isConnected && (
             <div
               role="status"
-              className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-medium text-amber-800 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-300"
+              className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-medium text-amber-900 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-300"
             >
               Connect your wallet to fund this campaign.
             </div>
           )}
 
           {/* Stats bar */}
-          <div className="grid grid-cols-2 gap-3 rounded-xl border border-slate-100 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-800/40">
+          <div className="grid grid-cols-2 gap-3 rounded-xl border border-soil-200 bg-soil-50 p-3 dark:border-soil-800 dark:bg-soil-900/40">
             <div>
-              <span className="block text-xs text-slate-600 dark:text-slate-400">
+              <span className="block text-xs text-soil-600 dark:text-soil-400">
                 Remaining Target
               </span>
-              <span className="text-sm font-semibold text-slate-900 dark:text-white">
+              <span className="text-sm font-semibold text-soil-900 dark:text-soil-50">
                 ${remainingTarget.toLocaleString()}
               </span>
             </div>
             <div>
-              <span className="block text-xs text-slate-600 dark:text-slate-400">
+              <span className="block text-xs text-soil-600 dark:text-soil-400">
                 Est. Share
               </span>
-              <span className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">
+              <span className="text-sm font-semibold text-leaf-700 dark:text-leaf-400">
                 {estimatedShare}%
               </span>
             </div>
@@ -197,7 +200,7 @@ export const FundCampaignModal: React.FC<FundCampaignModalProps> = ({
             <div
               id="contribution-amount-error"
               role="alert"
-              className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-950/50 dark:text-red-300"
+              className="rounded-xl border border-status-failed/20 bg-status-failed-light p-3 text-sm text-status-failed-dark dark:border-red-800 dark:bg-red-950/50 dark:text-red-300"
             >
               {error}
             </div>
@@ -207,13 +210,13 @@ export const FundCampaignModal: React.FC<FundCampaignModalProps> = ({
           <div>
             <label
               htmlFor="contribution-amount"
-              className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300"
+              className="mb-1 block text-sm font-medium text-soil-700 dark:text-soil-300"
             >
               Contribution Amount (USDC)
             </label>
             <div className="relative">
               <span
-                className="absolute left-3 top-1/2 -translate-y-1/2 font-semibold text-slate-600 dark:text-slate-400"
+                className="absolute left-3 top-1/2 -translate-y-1/2 font-semibold text-soil-600 dark:text-soil-400"
                 aria-hidden="true"
               >
                 $
@@ -234,14 +237,14 @@ export const FundCampaignModal: React.FC<FundCampaignModalProps> = ({
                 aria-describedby={
                   error ? 'contribution-amount-error' : undefined
                 }
-                className="w-full rounded-xl border border-slate-300 bg-white py-2.5 pl-8 pr-4 text-slate-900 outline-none transition focus:border-transparent focus:ring-2 focus:ring-emerald-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                className="w-full rounded-xl border border-soil-300 bg-white py-2.5 pl-8 pr-4 text-soil-900 outline-none transition focus:border-leaf-500 focus:ring-2 focus:ring-leaf-500 dark:border-soil-700 dark:bg-soil-900 dark:text-white"
               />
             </div>
           </div>
 
           {/* Quick selectors */}
           <div className="flex items-center gap-2">
-            <span className="text-xs text-slate-600 dark:text-slate-400">
+            <span className="text-xs text-soil-600 dark:text-soil-400">
               Quick fill:
             </span>
             {[25, 50, 100].map((pct) => (
@@ -249,7 +252,7 @@ export const FundCampaignModal: React.FC<FundCampaignModalProps> = ({
                 type="button"
                 key={pct}
                 onClick={() => handlePercentageSelect(pct)}
-                className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs text-slate-600 transition hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                className="rounded-lg border border-soil-300 px-2.5 py-1 text-xs text-soil-700 transition hover:bg-soil-100 dark:border-soil-700 dark:text-soil-300 dark:hover:bg-soil-800"
               >
                 {pct}%
               </button>
@@ -257,21 +260,18 @@ export const FundCampaignModal: React.FC<FundCampaignModalProps> = ({
           </div>
 
           {/* Footer Buttons */}
-          <div className="flex items-center justify-end gap-3 border-t border-slate-100 pt-3 dark:border-slate-800">
-            <button
-              type="button"
-              onClick={resetAndClose}
-              className="rounded-xl border border-slate-300 px-4 py-2.5 font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-            >
+          <div className="flex items-center justify-end gap-3 border-t border-soil-200 pt-3 dark:border-soil-800">
+            <Button type="button" variant="outline" onClick={resetAndClose}>
               Cancel
-            </button>
-            <button
+            </Button>
+            <Button
               type="submit"
+              variant="primary"
+              isLoading={loading}
               disabled={loading || remainingTarget <= 0 || !isConnected}
-              className="rounded-xl bg-emerald-700 px-5 py-2.5 font-semibold text-white shadow-sm transition hover:bg-emerald-800 disabled:opacity-50"
             >
-              {loading ? 'Confirming...' : 'Confirm Contribution'}
-            </button>
+              Confirm Contribution
+            </Button>
           </div>
         </form>
       )}
