@@ -44,4 +44,9 @@ export const envValidationSchema = Joi.object({
     .required(),
   THROTTLE_TTL_MS: Joi.number().min(1000).default(60000),
   THROTTLE_LIMIT: Joi.number().min(1).default(100),
+  // Shared secret for verifying HS256 tokens on private WebSocket channels.
+  // Optional: when unset, private channels are disabled (fail closed) while
+  // public campaign/activity streams stay open. Required to be reasonably
+  // strong when provided.
+  WS_AUTH_SECRET: Joi.string().min(16).allow('').default(''),
 });

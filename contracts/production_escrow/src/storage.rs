@@ -33,6 +33,14 @@ pub fn set_admin(env: &Env, admin: &Address) {
     env.storage().instance().set(&DataKey::Admin, admin);
 }
 
+pub fn get_registry(env: &Env) -> Option<Address> {
+    env.storage().instance().get(&DataKey::Registry)
+}
+
+pub fn set_registry(env: &Env, registry: &Address) {
+    env.storage().instance().set(&DataKey::Registry, registry);
+}
+
 pub fn has_campaign(env: &Env, campaign_id: u64) -> bool {
     env.storage()
         .persistent()

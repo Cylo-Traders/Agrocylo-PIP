@@ -26,7 +26,7 @@ use registry::{
 use soroban_sdk::{
     testutils::{Address as _, Events},
     token::{Client as TokenClient, StellarAssetClient},
-    Address, Env, Symbol, TryFromVal,
+    Address, Env, String, Symbol, TryFromVal,
 };
 
 // ─── shared harness ──────────────────────────────────────────────────────
@@ -84,6 +84,19 @@ impl<'a> Harness<'a> {
         let campaign_id = 1u64;
         let deadline = 1_000_000u64;
         let harvest_metadata = Symbol::new(&env, "maize");
+
+        // registry/src/campaign.rs#link_campaign_escrow now requires the
+        // campaign to already be register_campaign'd (issue #153), so tests
+        // that manually call `registry.link_campaign_escrow(...)` below need
+        // this done up front. The escrow contract itself isn't wired to the
+        // registry in this harness (see `escrow_wired_to_registry_...` below
+        // for that flow), so this doesn't happen automatically here.
+        registry.register_campaign(
+            &campaign_id,
+            &farmer,
+            &String::from_str(&env, "Maize Campaign"),
+            &String::from_str(&env, "Integration test campaign"),
+        );
 
         escrow.create_campaign(
             &campaign_id,
@@ -278,6 +291,69 @@ fn failed_campaign_refund_flow() {
     assert!(escrow_emitted(&h, "RefundClaimed"));
 }
 
+// ─── registry status mirror tracks the escrow's real lifecycle state ────
+
+#[test]
+fn registry_mirror_tracks_harvested_status() {
+    let h = Harness::new();
+    let crop = Symbol::new(&h.env, "maize");
+    let region = Symbol::new(&h.env, "central");
+    h.registry
+        .link_campaign_escrow(&h.campaign_id, &h.farmer, &h.escrow.address, &crop, &region);
+
+    // Drive the escrow to Harvested.
+    h.fund_fully();
+    let outcome = Symbol::new(&h.env, "good_yield");
+    h.escrow.report_harvest(&h.campaign_id, &h.farmer, &outcome);
+    assert_eq!(h.campaign().status, CampaignStatus::Harvested);
+
+    // Orchestrator mirrors the escrow's Harvested state into the registry.
+    h.registry.update_campaign_status(
+        &h.campaign_id,
+        &h.escrow.address,
+        &RegistryCampaignStatus::Harvested,
+    );
+
+    assert_eq!(
+        h.registry
+            .get_campaign_record(&h.campaign_id)
+            .unwrap()
+            .status,
+        RegistryCampaignStatus::Harvested
+    );
+}
+
+#[test]
+fn registry_mirror_tracks_failed_status() {
+    let h = Harness::new();
+    let crop = Symbol::new(&h.env, "maize");
+    let region = Symbol::new(&h.env, "central");
+    h.registry
+        .link_campaign_escrow(&h.campaign_id, &h.farmer, &h.escrow.address, &crop, &region);
+
+    // Partially fund, then the admin marks the campaign failed.
+    h.escrow
+        .fund_campaign(&h.campaign_id, &h.investor1, &600i128);
+    assert_eq!(h.campaign().status, CampaignStatus::Funding);
+    h.escrow.mark_failed(&h.campaign_id);
+    assert_eq!(h.campaign().status, CampaignStatus::Failed);
+
+    // Orchestrator mirrors the escrow's Failed state into the registry.
+    h.registry.update_campaign_status(
+        &h.campaign_id,
+        &h.escrow.address,
+        &RegistryCampaignStatus::Failed,
+    );
+
+    assert_eq!(
+        h.registry
+            .get_campaign_record(&h.campaign_id)
+            .unwrap()
+            .status,
+        RegistryCampaignStatus::Failed
+    );
+}
+
 // ─── disputed campaign resolution flow ──────────────────────────────────
 
 #[test]
@@ -438,3 +514,81 @@ fn contract_emitted(env: &Env, contract_id: &Address, topic_name: &str) -> bool 
                 .unwrap_or(false)
     })
 }
+
+// ─── on-chain escrow -> registry wiring (issue #96) ─────────────────────
+
+/// With `set_registry` configured and the escrow contract approved, escrow
+/// lifecycle calls alone (no manual `record_activity`/`update_campaign_status`
+/// from the test, unlike `Harness` above) populate the registry's activity
+/// log and status mirror.
+#[test]
+fn escrow_wired_to_registry_populates_activity_and_status() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let escrow_id = env.register_contract(None, ProductionEscrowContract);
+    let escrow = ProductionEscrowContractClient::new(&env, &escrow_id);
+    let registry_id = env.register_contract(None, RegistryContract);
+    let registry = RegistryContractClient::new(&env, &registry_id);
+
+    let admin = Address::generate(&env);
+    let farmer = Address::generate(&env);
+    let investor = Address::generate(&env);
+
+    let token_admin = env.register_stellar_asset_contract_v2(admin.clone());
+    let token = token_admin.address();
+    StellarAssetClient::new(&env, &token).mint(&investor, &1000i128);
+
+    registry.initialize(&admin);
+    registry.approve_contract(&escrow_id);
+    escrow.initialize(&admin);
+    escrow.set_registry(&registry_id);
+
+    let campaign_id = 1u64;
+    // See the comment in Harness::new() above: link_campaign_escrow (called
+    // internally by create_campaign below, since the registry is wired up)
+    // now requires register_campaign to have happened first.
+    registry.register_campaign(
+        &campaign_id,
+        &farmer,
+        &String::from_str(&env, "Maize Campaign"),
+        &String::from_str(&env, "Integration test campaign"),
+    );
+    escrow.create_campaign(
+        &campaign_id,
+        &farmer,
+        &1000i128,
+        &token,
+        &1_000_000u64,
+        &Symbol::new(&env, "maize"),
+    );
+    escrow.fund_campaign(&campaign_id, &investor, &1000i128);
+
+    // create_campaign -> link + CampaignCreated, fund_campaign (Funded) -> CampaignFunded + status sync.
+    let activities = registry.get_campaign_activities(&campaign_id);
+    assert_eq!(activities.len(), 2);
+    assert_eq!(
+        activities.get(0).unwrap().action_type,
+        ActivityAction::CampaignCreated
+    );
+    assert_eq!(
+        activities.get(1).unwrap().action_type,
+        ActivityAction::CampaignFunded
+    );
+
+    let record = registry.get_campaign_record(&campaign_id).unwrap();
+    assert_eq!(record.status, RegistryCampaignStatus::Funded);
+}
+
+// NOTE: a test asserting that an unapproved escrow contract's registry calls
+// panic predictably was attempted here and removed -- it does not currently
+// hold. `link_campaign_escrow`'s `is_contract_approved` check only decides
+// *who* must authorize (the escrow itself vs. the farmer), and since
+// `create_campaign` already carries the farmer's auth, an unapproved escrow
+// still links successfully. `update_campaign_status` afterwards only checks
+// `caller == record.escrow_contract`, which the escrow itself always
+// satisfies regardless of the approved-contracts list. So today, approval
+// gates nothing an escrow contract can't already do to its own linked
+// campaigns via self-authorization. This is a real gap worth a follow-up
+// (e.g. `update_campaign_status` additionally requiring
+// `is_contract_approved(escrow_contract)`), not something fixed here.

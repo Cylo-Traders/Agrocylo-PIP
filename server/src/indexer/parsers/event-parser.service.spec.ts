@@ -186,6 +186,63 @@ describe('EventParserService', () => {
     });
   });
 
+  describe('ContribReconciled', () => {
+    it('is parsed (not silently dropped), increments totalFunded, and persists a Transaction row tagged distinctly from ContribReceived', async () => {
+      const emitCampaignEvent = jest.fn();
+      const withRealtime = new EventParserService(
+        prisma as any,
+        {
+          emitCampaignEvent,
+        } as any,
+      );
+
+      await withRealtime.processEvent(
+        rawEvent(
+          'e-recon1',
+          ['ContribReconciled', CAMPAIGN_ID],
+          [INVESTOR, 1700000000n, 250n],
+        ),
+      );
+
+      // Never conflated with a genuine on-chain deposit.
+      expect(prisma.investment.create).not.toHaveBeenCalled();
+
+      expect(prisma.campaign.update).toHaveBeenCalledWith({
+        where: { id: '123' },
+        data: { totalFunded: { increment: 250n } },
+      });
+
+      expect(prisma.transaction.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            id: 'e-recon1',
+            type: 'campaign.contrib_reconciled',
+            userId: INVESTOR,
+            amount: 250n,
+            status: 'Confirmed',
+          }),
+        }),
+      );
+
+      // Broadcast end-to-end, distinguishable from a normal contribution.
+      expect(emitCampaignEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'campaign.contrib_reconciled',
+          campaignId: '123',
+        }),
+      );
+    });
+
+    it('logs and skips a malformed payload', async () => {
+      await service.processEvent(
+        rawEvent('e-recon-bad', ['ContribReconciled', CAMPAIGN_ID], [INVESTOR]),
+      );
+
+      expect(errorSpy).toHaveBeenCalled();
+      expect(prisma.transaction.create).not.toHaveBeenCalled();
+    });
+  });
+
   describe('CampaignFunded', () => {
     it('marks the campaign Funded with the authoritative total', async () => {
       await service.processEvent(
@@ -433,7 +490,7 @@ describe('EventParserService', () => {
       });
       expect(prisma.campaign.update).toHaveBeenCalledWith({
         where: { id: '123' },
-        data: { status: 'Resolved' },
+        data: { status: 'Resolved', refundable: { increment: 50n } },
       });
     });
 
@@ -449,7 +506,7 @@ describe('EventParserService', () => {
       expect(prisma.dispute.update).not.toHaveBeenCalled();
       expect(prisma.campaign.update).toHaveBeenCalledWith({
         where: { id: '123' },
-        data: { status: 'Resolved' },
+        data: { status: 'Resolved', refundable: { increment: 500n } },
       });
     });
 
@@ -473,7 +530,7 @@ describe('EventParserService', () => {
       );
       expect(prisma.campaign.update).toHaveBeenCalledWith({
         where: { id: '123' },
-        data: { status: 'Settled' },
+        data: { status: 'Settled', returnable: { increment: 100n } },
       });
     });
 

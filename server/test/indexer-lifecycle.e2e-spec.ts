@@ -1,19 +1,11 @@
-import { readFileSync, rmSync } from 'node:fs';
+import { rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { PrismaClient } from '../generated/prisma/client';
 import { PrismaLibSql } from '@prisma/adapter-libsql';
 import { EventParserService } from '../src/indexer/parsers/event-parser.service';
 import type { RawSorobanEvent } from '../src/indexer/types/soroban-events.types';
-
-const MIGRATION_SQL = path.join(
-  __dirname,
-  '..',
-  'prisma',
-  'migrations',
-  '20260723224032_add_indexer_cursor_dispute_tranche_and_campaign_fields',
-  'migration.sql',
-);
+import { applyMigrations } from './apply-migrations';
 
 const CAMPAIGN_ID = 'lifecycle-campaign-1';
 const FARMER = 'GFARMER_LIFECYCLE';
@@ -50,16 +42,7 @@ describe('Indexer campaign lifecycle (e2e)', () => {
     prisma = new PrismaClient({
       adapter: new PrismaLibSql({ url: `file:${dbPath}` }),
     });
-    // The libsql adapter executes only the first statement of a multi-statement
-    // string, so apply the migration one DDL statement at a time.
-    const schema = readFileSync(MIGRATION_SQL, 'utf8');
-    const statements = schema
-      .split(';')
-      .map((statement) => statement.trim())
-      .filter((statement) => statement.length > 0);
-    for (const statement of statements) {
-      await prisma.$executeRawUnsafe(statement);
-    }
+    await applyMigrations(prisma);
     parser = new EventParserService(prisma);
   });
 

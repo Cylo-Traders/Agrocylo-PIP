@@ -7,7 +7,17 @@ This document describes how the `ProductionEscrowContract` and `RegistryContract
 - **ProductionEscrowContract** owns campaign financial state (funding, escrow, disputes, settlements) and emits canonical events for every state change.
 - **RegistryContract** owns the audit trail of campaign activities and access-control lists (admin, approved contracts). It is the source of truth for *who* did *what* and *when*.
 
-In the intended integration, `ProductionEscrowContract` (or an authorized backend service acting on its behalf) calls `RegistryContract::record_activity` after each significant lifecycle step. The `ProductionEscrowContract` address must first be registered in the `RegistryContract` via `approve_contract`.
+`ProductionEscrowContract` now calls `RegistryContract` directly on-chain after each significant lifecycle step (`create_campaign`, `fund_campaign` reaching `Funded`, `release_tranche` reaching `InProduction`, `report_harvest`, `open_dispute`, `resolve_dispute`, `settle_campaign`, `mark_failed`): it invokes `record_activity` with the matching `ActivityAction`, and `update_campaign_status` whenever the transition changes `Campaign.status`. `create_campaign` also calls `link_campaign_escrow` so the registry has a `CampaignRecord` to update.
+
+This is opt-in per escrow instance: admin calls `ProductionEscrowContract::set_registry(registry_address)` once. Until that's called, escrow makes zero cross-contract calls (this is what keeps every pre-existing escrow/registry test passing unmodified). The `ProductionEscrowContract` address must still be registered in the `RegistryContract` via `approve_contract` for `update_campaign_status` to authorize it as the campaign's registered escrow (see "Cross-contract call failure semantics" below for what happens if it isn't).
+
+**Implementation note:** `registry` already depends on `production_escrow` as a crate (for `reconcile_campaign_status`'s cross-contract read), so `production_escrow` cannot take a normal crate dependency on `registry` without a circular dependency. The escrow-to-registry calls are therefore made via `env.invoke_contract` with hand-encoded arguments (see `notify_registry` in `production_escrow/src/lib.rs`), not the generated `RegistryContractClient`.
+
+### Cross-contract call failure semantics: rollback, not best-effort
+
+If the registry call fails for any reason -- most commonly, the escrow contract was never `approve_contract`'d, so `update_campaign_status` panics with `"unauthorized: caller is not the registered escrow contract or admin"` -- **the entire escrow transaction aborts**. `notify_registry` uses `env.invoke_contract` directly (not a try/catch-style `try_invoke_contract`), so a registry-side panic propagates up through the escrow call and the whole transaction, including the escrow-side state change that triggered it, is rolled back atomically by the Soroban host.
+
+This was a deliberate choice over best-effort/non-blocking: silently swallowing a registry failure would let escrow and registry state diverge silently (the exact "Failure mode" described below), with no signal to the caller that anything went wrong. Rollback means a misconfigured registry link fails loudly and immediately, at the call that caused it, with a caller-visible panic message -- not weeks later when someone notices `get_campaign_activities` is empty.
 
 ## Contract Responsibilities
 

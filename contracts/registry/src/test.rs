@@ -665,6 +665,12 @@ fn test_link_campaign_escrow_success() {
     let crop = Symbol::new(&env, "coffee");
     let region = Symbol::new(&env, "highlands");
 
+    client.register_campaign(
+        &campaign_id,
+        &user,
+        &String::from_str(&env, "Coffee Farm"),
+        &String::from_str(&env, "Premium coffee"),
+    );
     client.link_campaign_escrow(&campaign_id, &user, &escrow, &crop, &region);
 
     let record = client.get_campaign_record(&campaign_id).unwrap();
@@ -684,8 +690,49 @@ fn test_link_campaign_escrow_duplicate_fails() {
     let crop = Symbol::new(&env, "coffee");
     let region = Symbol::new(&env, "highlands");
 
+    client.register_campaign(
+        &campaign_id,
+        &user,
+        &String::from_str(&env, "Coffee Farm"),
+        &String::from_str(&env, "Premium coffee"),
+    );
     client.link_campaign_escrow(&campaign_id, &user, &escrow, &crop, &region);
     client.link_campaign_escrow(&campaign_id, &user, &escrow, &crop, &region);
+}
+
+#[test]
+#[should_panic(expected = "campaign not registered")]
+fn test_link_campaign_escrow_before_register_fails() {
+    let (env, admin, user, escrow, client) = create_test_env();
+    client.initialize(&admin);
+
+    let campaign_id = 1u64;
+    let crop = Symbol::new(&env, "coffee");
+    let region = Symbol::new(&env, "highlands");
+
+    // Never registered via register_campaign.
+    client.link_campaign_escrow(&campaign_id, &user, &escrow, &crop, &region);
+}
+
+#[test]
+#[should_panic(expected = "farmer does not match registered campaign")]
+fn test_link_campaign_escrow_farmer_mismatch_fails() {
+    let (env, admin, user, escrow, client) = create_test_env();
+    client.initialize(&admin);
+
+    let campaign_id = 1u64;
+    let crop = Symbol::new(&env, "coffee");
+    let region = Symbol::new(&env, "highlands");
+    let other_farmer = Address::generate(&env);
+
+    client.register_campaign(
+        &campaign_id,
+        &user,
+        &String::from_str(&env, "Coffee Farm"),
+        &String::from_str(&env, "Premium coffee"),
+    );
+    // Different farmer than the one that registered the campaign.
+    client.link_campaign_escrow(&campaign_id, &other_farmer, &escrow, &crop, &region);
 }
 
 #[test]
@@ -705,6 +752,12 @@ fn test_update_campaign_status_as_escrow_contract() {
     let campaign_id = 1u64;
     let crop = Symbol::new(&env, "coffee");
     let region = Symbol::new(&env, "highlands");
+    client.register_campaign(
+        &campaign_id,
+        &user,
+        &String::from_str(&env, "Coffee Farm"),
+        &String::from_str(&env, "Premium coffee"),
+    );
     client.link_campaign_escrow(&campaign_id, &user, &escrow, &crop, &region);
 
     client.update_campaign_status(&campaign_id, &escrow, &CampaignStatus::Funding);
@@ -727,12 +780,62 @@ fn test_update_campaign_status_as_admin() {
     let campaign_id = 1u64;
     let crop = Symbol::new(&env, "coffee");
     let region = Symbol::new(&env, "highlands");
+    client.register_campaign(
+        &campaign_id,
+        &user,
+        &String::from_str(&env, "Coffee Farm"),
+        &String::from_str(&env, "Premium coffee"),
+    );
     client.link_campaign_escrow(&campaign_id, &user, &escrow, &crop, &region);
 
     client.update_campaign_status(&campaign_id, &admin, &CampaignStatus::Settled);
 
     let record = client.get_campaign_record(&campaign_id).unwrap();
     assert_eq!(record.status, CampaignStatus::Settled);
+}
+
+#[test]
+fn test_update_campaign_status_harvested() {
+    let (env, admin, user, escrow, client) = create_test_env();
+    client.initialize(&admin);
+
+    let campaign_id = 1u64;
+    let crop = Symbol::new(&env, "coffee");
+    let region = Symbol::new(&env, "highlands");
+    client.register_campaign(
+        &campaign_id,
+        &user,
+        &String::from_str(&env, "Coffee Farm"),
+        &String::from_str(&env, "Premium coffee"),
+    );
+    client.link_campaign_escrow(&campaign_id, &user, &escrow, &crop, &region);
+
+    client.update_campaign_status(&campaign_id, &escrow, &CampaignStatus::Harvested);
+
+    let record = client.get_campaign_record(&campaign_id).unwrap();
+    assert_eq!(record.status, CampaignStatus::Harvested);
+}
+
+#[test]
+fn test_update_campaign_status_failed() {
+    let (env, admin, user, escrow, client) = create_test_env();
+    client.initialize(&admin);
+
+    let campaign_id = 1u64;
+    let crop = Symbol::new(&env, "coffee");
+    let region = Symbol::new(&env, "highlands");
+    client.register_campaign(
+        &campaign_id,
+        &user,
+        &String::from_str(&env, "Coffee Farm"),
+        &String::from_str(&env, "Premium coffee"),
+    );
+    client.link_campaign_escrow(&campaign_id, &user, &escrow, &crop, &region);
+
+    client.update_campaign_status(&campaign_id, &escrow, &CampaignStatus::Failed);
+
+    let record = client.get_campaign_record(&campaign_id).unwrap();
+    assert_eq!(record.status, CampaignStatus::Failed);
 }
 
 #[test]
@@ -744,6 +847,12 @@ fn test_update_campaign_status_unauthorized_caller_fails() {
     let campaign_id = 1u64;
     let crop = Symbol::new(&env, "coffee");
     let region = Symbol::new(&env, "highlands");
+    client.register_campaign(
+        &campaign_id,
+        &user,
+        &String::from_str(&env, "Coffee Farm"),
+        &String::from_str(&env, "Premium coffee"),
+    );
     client.link_campaign_escrow(&campaign_id, &user, &escrow, &crop, &region);
 
     let random = Address::generate(&env);
@@ -759,6 +868,18 @@ fn test_get_campaigns_by_farmer() {
     let crop = Symbol::new(&env, "coffee");
     let region = Symbol::new(&env, "highlands");
 
+    client.register_campaign(
+        &1u64,
+        &user,
+        &String::from_str(&env, "Coffee Farm"),
+        &String::from_str(&env, "Premium coffee"),
+    );
+    client.register_campaign(
+        &2u64,
+        &user,
+        &String::from_str(&env, "Cocoa Farm"),
+        &String::from_str(&env, "Premium cocoa"),
+    );
     client.link_campaign_escrow(&1u64, &user, &escrow, &crop, &region);
     client.link_campaign_escrow(&2u64, &user, &escrow_2, &crop, &region);
 
@@ -848,6 +969,12 @@ fn test_farmer_campaigns_paginate_across_multiple_pages() {
     let total = max_per_page * 2 + 25;
 
     for i in 0..total {
+        client.register_campaign(
+            &(i as u64),
+            &user,
+            &String::from_str(&env, "Coffee Farm"),
+            &String::from_str(&env, "Premium coffee"),
+        );
         client.link_campaign_escrow(&(i as u64), &user, &escrow, &crop, &region);
     }
 

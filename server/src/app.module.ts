@@ -11,6 +11,8 @@ import { HealthModule } from './modules/health/health.module';
 import { IndexerModule } from './indexer/indexer.module';
 import { DatabaseModule } from './database/database.module';
 import { WebsocketModule } from './websocket/websocket.module';
+import { CampaignsModule } from './modules/campaigns/campaigns.module';
+import { InvestorsModule } from './modules/investors/investors.module';
 
 /**
  * Root application module. Feature modules are registered here as the platform
@@ -36,6 +38,8 @@ import { WebsocketModule } from './websocket/websocket.module';
     DatabaseModule,
     WebsocketModule,
     IndexerModule,
+    CampaignsModule,
+    InvestorsModule,
   ],
   providers: [
     {

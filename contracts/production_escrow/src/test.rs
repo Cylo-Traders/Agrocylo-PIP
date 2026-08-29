@@ -1,6 +1,6 @@
 use super::*;
 use soroban_sdk::{
-    testutils::{storage::Persistent, Address as _, Events, Ledger},
+    testutils::{Address as _, Events, Ledger},
     token::{Client as TokenClient, StellarAssetClient},
     Address, Env, IntoVal, Symbol, Vec,
 };
@@ -1117,6 +1117,211 @@ fn test_create_campaign_emits_event() {
         event.1,
         (Symbol::new(&env, "CampaignCreated"), 123u64).into_val(&env)
     );
+}
+
+// ─── deadline validation & enforcement tests ────────────────────────────────
+
+#[test]
+#[should_panic(expected = "deadline must be in the future")]
+fn test_create_campaign_past_deadline_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().set_timestamp(2000u64);
+
+    let contract_id = env.register_contract(None, ProductionEscrowContract);
+    let client = ProductionEscrowContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let farmer = Address::generate(&env);
+    let token = Address::generate(&env);
+
+    client.initialize(&admin);
+    client.create_campaign(
+        &1u64,
+        &farmer,
+        &1000i128,
+        &token,
+        &1000u64,
+        &Symbol::new(&env, "wheat"),
+    );
+}
+
+#[test]
+#[should_panic(expected = "deadline must be in the future")]
+fn test_create_campaign_zero_deadline_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, ProductionEscrowContract);
+    let client = ProductionEscrowContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let farmer = Address::generate(&env);
+    let token = Address::generate(&env);
+
+    client.initialize(&admin);
+    client.create_campaign(
+        &1u64,
+        &farmer,
+        &1000i128,
+        &token,
+        &0u64,
+        &Symbol::new(&env, "wheat"),
+    );
+}
+
+#[test]
+fn test_create_campaign_future_deadline_accepted() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().set_timestamp(1000u64);
+    let contract_id = env.register_contract(None, ProductionEscrowContract);
+    let client = ProductionEscrowContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let farmer = Address::generate(&env);
+    let token = Address::generate(&env);
+
+    client.initialize(&admin);
+    client.create_campaign(
+        &1u64,
+        &farmer,
+        &1000i128,
+        &token,
+        &5000u64,
+        &Symbol::new(&env, "wheat"),
+    );
+
+    let campaign = client.get_campaign(&1u64).unwrap();
+    assert_eq!(campaign.deadline, 5000u64);
+}
+
+#[test]
+#[should_panic(expected = "campaign deadline has passed")]
+fn test_fund_campaign_after_deadline_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, ProductionEscrowContract);
+    let client = ProductionEscrowContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let farmer = Address::generate(&env);
+    let investor = Address::generate(&env);
+    let (token_address, sac) = create_token(&env, &admin);
+    sac.mint(&investor, &1000i128);
+
+    client.initialize(&admin);
+    let deadline = 5000u64;
+    client.create_campaign(
+        &1u64,
+        &farmer,
+        &1000i128,
+        &token_address,
+        &deadline,
+        &Symbol::new(&env, "wheat"),
+    );
+
+    env.ledger().set_timestamp(deadline + 1);
+    client.fund_campaign(&1u64, &investor, &100i128);
+}
+
+#[test]
+#[should_panic(expected = "campaign deadline has passed")]
+fn test_receive_contribution_after_deadline_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, ProductionEscrowContract);
+    let client = ProductionEscrowContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let farmer = Address::generate(&env);
+    let investor = Address::generate(&env);
+    let (token_address, sac) = create_token(&env, &admin);
+    sac.mint(&contract_id, &1000i128);
+
+    client.initialize(&admin);
+    let deadline = 5000u64;
+    client.create_campaign(
+        &1u64,
+        &farmer,
+        &1000i128,
+        &token_address,
+        &deadline,
+        &Symbol::new(&env, "wheat"),
+    );
+
+    env.ledger().set_timestamp(deadline + 1);
+    client.receive_contribution(&1u64, &investor, &100i128);
+}
+
+#[test]
+fn test_expire_campaign_transitions_unmet_campaign_to_failed() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, ProductionEscrowContract);
+    let client = ProductionEscrowContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let farmer = Address::generate(&env);
+    let investor = Address::generate(&env);
+    let (token_address, sac) = create_token(&env, &admin);
+    sac.mint(&investor, &1000i128);
+
+    client.initialize(&admin);
+    let deadline = 5000u64;
+    client.create_campaign(
+        &1u64,
+        &farmer,
+        &1000i128,
+        &token_address,
+        &deadline,
+        &Symbol::new(&env, "wheat"),
+    );
+    // Partially fund (below target) before the deadline.
+    client.fund_campaign(&1u64, &investor, &400i128);
+
+    // After the deadline, anyone can expire the under-funded campaign.
+    let bystander = Address::generate(&env);
+    env.ledger().set_timestamp(deadline + 1);
+    client.expire_campaign(&1u64);
+
+    let campaign = client.get_campaign(&1u64).unwrap();
+    assert_eq!(campaign.status, CampaignStatus::Failed);
+    assert_eq!(campaign.refundable, 400i128);
+    // Bystander did not authorize, but expire_campaign is permissionless.
+    let _ = bystander;
+}
+
+#[test]
+#[should_panic(expected = "campaign deadline has not yet passed")]
+fn test_expire_campaign_before_deadline_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, ProductionEscrowContract);
+    let client = ProductionEscrowContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let farmer = Address::generate(&env);
+    let token = Address::generate(&env);
+
+    client.initialize(&admin);
+    client.create_campaign(
+        &1u64,
+        &farmer,
+        &1000i128,
+        &token,
+        &5000u64,
+        &Symbol::new(&env, "wheat"),
+    );
+    client.expire_campaign(&1u64);
+}
+
+#[test]
+#[should_panic(expected = "campaign cannot be expired in its current state")]
+fn test_expire_campaign_funded_campaign_fails() {
+    let s = token_funded_campaign();
+    let deadline = {
+        let c = s.client.get_campaign(&s.campaign_id).unwrap();
+        c.deadline
+    };
+    s.env.ledger().set_timestamp(deadline + 1);
+    s.client.expire_campaign(&s.campaign_id);
 }
 
 // ─── report_harvest tests ────────────────────────────────────────────────────

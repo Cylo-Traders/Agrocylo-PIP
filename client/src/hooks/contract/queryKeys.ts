@@ -7,7 +7,9 @@ export const contractQueryKeys = {
   tranches: (campaignId: string) => ['tranches', campaignId] as const,
   harvestRecord: (campaignId: string) => ['harvestRecord', campaignId] as const,
   farmer: (address: string) => ['farmer', address] as const,
+  farmerCampaigns: (address: string) => ['farmerCampaigns', address] as const,
   activity: (campaignId: string) => ['activity', campaignId] as const,
   escrowAdmin: () => ['escrowAdmin'] as const,
   adminCampaignsOverview: () => ['adminCampaignsOverview'] as const,
+  allCampaigns: () => ['allCampaigns'] as const,
 };

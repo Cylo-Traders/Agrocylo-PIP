@@ -151,6 +151,8 @@ export class EventParserService {
         return this.parseCampaignEscrowCreated(raw, topics, arr);
       case 'ContribReceived':
         return this.parseCampaignInvested(raw, topics, arr);
+      case 'ContribReconciled':
+        return this.parseContribReconciled(raw, topics, arr);
       case 'CampaignFunded':
         return this.parseCampaignFunded(raw, topics, arr);
       case 'TranchesConfigured':
@@ -272,6 +274,42 @@ export class EventParserService {
       raw,
       topics,
       'campaign.invested',
+      data as unknown as Record<string, unknown>,
+      {
+        campaignId,
+        userAddress: investor,
+        amount,
+      },
+    );
+  }
+
+  /**
+   * `receive_contribution`'s admin-only reconciliation path -- same payload
+   * shape as `ContribReceived` ((investor, timestamp, amount)) but tagged
+   * with a distinct type so it's never conflated with a genuine on-chain
+   * deposit downstream (see events.rs `emit_reconciled_contribution`).
+   */
+  private parseContribReconciled(
+    raw: RawSorobanEvent,
+    topics: unknown[],
+    arr: unknown[],
+  ): ParsedEvent {
+    if (arr.length < 3)
+      throw new Error('ContribReconciled payload must have 3 elements');
+    const campaignId = asString(topics[1], 'campaignId');
+    const investor = asString(arr[0], 'investor');
+    const timestamp = asNumber(arr[1], 'timestamp');
+    const amount = asBigInt(arr[2], 'amount');
+    const data: CampaignInvestedData = {
+      campaignId,
+      investor,
+      amount: amount.toString(),
+      timestamp,
+    };
+    return this.buildEvent(
+      raw,
+      topics,
+      'campaign.contrib_reconciled',
       data as unknown as Record<string, unknown>,
       {
         campaignId,
@@ -888,6 +926,9 @@ export class EventParserService {
       case 'campaign.invested':
         await this.handleCampaignInvested(parsed);
         break;
+      case 'campaign.contrib_reconciled':
+        await this.handleContribReconciled(parsed);
+        break;
       case 'campaign.funded':
         await this.handleCampaignFunded(parsed);
         break;
@@ -1020,6 +1061,37 @@ export class EventParserService {
     this.logger.log(
       { campaignId, investor: data.investor, amount: data.amount },
       'Investment recorded',
+    );
+  }
+
+  /**
+   * Admin-only reconciliation (no real token transfer). Kept out of the
+   * `Investment` table -- unlike `handleCampaignInvested`, this must not read
+   * as a genuine on-chain deposit -- while still incrementing
+   * `Campaign.totalFunded` to stay consistent with the escrow contract's own
+   * accounting (`receive_contribution` does `total_funded += amount`
+   * on-chain). The generic Transaction audit row created below (tagged
+   * `campaign.contrib_reconciled`, distinct from `campaign.invested`) is what
+   * lets monitoring flag/alert on this path separately, per the contract's
+   * documented trust model.
+   */
+  private async handleContribReconciled(parsed: ParsedEvent): Promise<void> {
+    const data = parsed.data as unknown as CampaignInvestedData;
+
+    await this.ensureUser(data.investor, data.timestamp);
+
+    await this.prisma.campaign.update({
+      where: { id: data.campaignId },
+      data: { totalFunded: { increment: BigInt(data.amount) } },
+    });
+
+    this.logger.warn(
+      {
+        campaignId: data.campaignId,
+        investor: data.investor,
+        amount: data.amount,
+      },
+      'Admin reconciled contribution (no token transfer) recorded',
     );
   }
 
@@ -1165,7 +1237,14 @@ export class EventParserService {
 
     await this.prisma.campaign.update({
       where: { id: data.campaignId },
-      data: { status: 'Resolved' },
+      data: {
+        status: 'Resolved',
+        // Mirrors ProductionEscrowContract's `campaign.refundable += refundable_to_investors`
+        // in resolve_dispute -- without this, RegistryContract-facing consumers
+        // (e.g. the investor portfolio endpoint) can never see a dispute-driven
+        // refund, since only mark_failed's refundable was previously persisted here.
+        refundable: { increment: BigInt(data.refundableToInvestors) },
+      },
     });
     this.logger.log(
       { campaignId: data.campaignId, resolution: data.resolution },
@@ -1177,7 +1256,13 @@ export class EventParserService {
     const data = parsed.data as unknown as CampaignSettledData;
     await this.prisma.campaign.update({
       where: { id: data.campaignId },
-      data: { status: 'Settled' },
+      data: {
+        status: 'Settled',
+        // Mirrors ProductionEscrowContract's `campaign.returnable += investor_returns`
+        // in settle_campaign, so investor-facing consumers can compute pro-rata
+        // claimable shares for settled campaigns (see InvestorsService.portfolio).
+        returnable: { increment: BigInt(data.investorReturns) },
+      },
     });
     this.logger.log(
       { campaignId: data.campaignId, farmerPayout: data.farmerPayout },

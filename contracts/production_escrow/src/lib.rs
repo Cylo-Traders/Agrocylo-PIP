@@ -10,11 +10,77 @@ pub use escrow_types::*;
 
 use events::*;
 use soroban_sdk::{
-    contract, contractimpl, token::Client as TokenClient, Address, Env, Symbol, Vec,
+    contract, contractimpl, token::Client as TokenClient, Address, Env, IntoVal, Symbol, Val, Vec,
 };
 
 #[contract]
 pub struct ProductionEscrowContract;
+
+/// Encodes a fieldless `#[contracttype] enum` variant (e.g.
+/// `registry::ActivityAction::CampaignCreated`) as the `Vec<Symbol>`-shaped
+/// `Val` Soroban's union wire format expects, without pulling in a compile-time
+/// dependency on the `registry` crate (which already depends on this crate
+/// for `reconcile_campaign_status`, so the reverse dependency would be
+/// circular). Only safe for variants that carry no associated data.
+fn unit_enum_val(env: &Env, variant: &str) -> Val {
+    let v: Vec<Val> = Vec::from_array(env, [Symbol::new(env, variant).into_val(env)]);
+    v.into_val(env)
+}
+
+/// Best-effort-vs-rollback is a real design decision (see INTEGRATION.md,
+/// "Cross-contract call failure semantics"): this crate chooses *rollback*.
+/// Registry calls use `env.invoke_contract` directly (not `try_invoke_contract`),
+/// so any registry-side panic (e.g. an unapproved escrow contract trying to
+/// update a campaign it doesn't own) aborts the whole escrow transaction --
+/// the escrow-side state change and the registry notification succeed or
+/// fail together. No-op if no registry address has been configured.
+fn notify_registry(env: &Env, campaign_id: u64, action: &str, new_status: Option<&CampaignStatus>) {
+    let Some(registry) = storage::get_registry(env) else {
+        return;
+    };
+    let this = env.current_contract_address();
+
+    let record_activity_args: Vec<Val> = Vec::from_array(
+        env,
+        [
+            campaign_id.into_val(env),
+            this.clone().into_val(env),
+            unit_enum_val(env, action),
+        ],
+    );
+    let _: () = env.invoke_contract(
+        &registry,
+        &Symbol::new(env, "record_activity"),
+        record_activity_args,
+    );
+
+    if let Some(status) = new_status {
+        let status_name = match status {
+            CampaignStatus::Active => "Active",
+            CampaignStatus::Funding => "Funding",
+            CampaignStatus::Funded => "Funded",
+            CampaignStatus::InProduction => "InProduction",
+            CampaignStatus::Harvested => "Harvested",
+            CampaignStatus::Disputed => "Disputed",
+            CampaignStatus::Resolved => "Resolved",
+            CampaignStatus::Settled => "Settled",
+            CampaignStatus::Failed => "Failed",
+        };
+        let update_status_args: Vec<Val> = Vec::from_array(
+            env,
+            [
+                campaign_id.into_val(env),
+                this.into_val(env),
+                unit_enum_val(env, status_name),
+            ],
+        );
+        let _: () = env.invoke_contract(
+            &registry,
+            &Symbol::new(env, "update_campaign_status"),
+            update_status_args,
+        );
+    }
+}
 
 /// Funds still held in escrow (not yet released, refundable, or returnable).
 fn escrow_held(campaign: &Campaign) -> i128 {
@@ -65,6 +131,20 @@ impl ProductionEscrowContract {
         storage::get_admin(&env)
     }
 
+    /// Admin-only. Points this escrow instance at a `RegistryContract` so
+    /// lifecycle transitions get mirrored via `record_activity` /
+    /// `update_campaign_status`. Until this is set, escrow behaves exactly
+    /// as before this feature (no cross-contract calls at all), which is
+    /// what keeps every pre-existing test passing unmodified.
+    pub fn set_registry(env: Env, registry: Address) {
+        require_admin(&env);
+        storage::set_registry(&env, &registry);
+    }
+
+    pub fn get_registry(env: Env) -> Option<Address> {
+        storage::get_registry(&env)
+    }
+
     pub fn create_campaign(
         env: Env,
         campaign_id: u64,
@@ -79,6 +159,14 @@ impl ProductionEscrowContract {
         }
         if target_amount <= 0 {
             panic!("target amount must be greater than zero");
+        }
+        // The deadline is the closing time for contributions: it must be in the
+        // future at creation time, otherwise the campaign would be immediately
+        // expired and could never be funded. We additionally require it to be
+        // strictly greater than the current timestamp (an equal deadline is a
+        // now-expired deadline).
+        if deadline <= env.ledger().timestamp() {
+            panic!("deadline must be in the future");
         }
         // Stellar token amounts are bounded by i64::MAX stroops (~9.2 × 10¹⁸).
         // Capping here prevents intermediate overflow in pro-rata arithmetic:
@@ -109,6 +197,29 @@ impl ProductionEscrowContract {
         storage::set_campaign(&env, campaign_id, &campaign);
         storage::extend_instance_ttl(&env);
 
+        if let Some(registry) = storage::get_registry(&env) {
+            let this = env.current_contract_address();
+            // crop/region metadata: this crate only tracks one harvest tag,
+            // so it's reused for both registry fields (see INTEGRATION.md).
+            let link_args: Vec<Val> = Vec::from_array(
+                &env,
+                [
+                    campaign_id.into_val(&env),
+                    farmer.clone().into_val(&env),
+                    this.into_val(&env),
+                    campaign.harvest_metadata.clone().into_val(&env),
+                    campaign.harvest_metadata.clone().into_val(&env),
+                ],
+            );
+            let _: () = env.invoke_contract(
+                &registry,
+                &Symbol::new(&env, "link_campaign_escrow"),
+                link_args,
+            );
+        }
+
+        notify_registry(&env, campaign_id, "CampaignCreated", None);
+
         emit_campaign_created(&env, campaign_id, farmer, target_amount);
     }
 
@@ -126,6 +237,14 @@ impl ProductionEscrowContract {
             .unwrap_or_else(|| panic!("campaign not found"));
         if campaign.status != CampaignStatus::Active && campaign.status != CampaignStatus::Funding {
             panic!("campaign not accepting contributions");
+        }
+        // Once the deadline has passed the campaign no longer accepts
+        // contributions. If the target was reached in time it has already
+        // transitioned to `Funded` (which fails this status check above);
+        // if not, it must first be expired via `expire_campaign` (or failed by
+        // an admin) before funds are refunded.
+        if env.ledger().timestamp() > campaign.deadline {
+            panic!("campaign deadline has passed");
         }
 
         // Transfer tokens from investor into this contract.
@@ -153,6 +272,13 @@ impl ProductionEscrowContract {
         let contributed = storage::get_contribution(&env, campaign_id, &investor) + amount;
         storage::set_contribution(&env, campaign_id, &investor, contributed);
         storage::extend_instance_ttl(&env);
+
+        let synced_status = if campaign.status == CampaignStatus::Funded {
+            Some(&campaign.status)
+        } else {
+            None
+        };
+        notify_registry(&env, campaign_id, "CampaignFunded", synced_status);
 
         emit_contribution_received(&env, campaign_id, investor, amount);
     }
@@ -189,6 +315,9 @@ impl ProductionEscrowContract {
 
         if campaign.status != CampaignStatus::Active && campaign.status != CampaignStatus::Funding {
             panic!("campaign not accepting contributions");
+        }
+        if env.ledger().timestamp() > campaign.deadline {
+            panic!("campaign deadline has passed");
         }
 
         let remaining = campaign.target_amount - campaign.total_funded;
@@ -319,6 +448,13 @@ impl ProductionEscrowContract {
         storage::set_campaign(&env, campaign_id, &campaign);
         storage::extend_instance_ttl(&env);
 
+        let synced_status = if campaign.status == CampaignStatus::InProduction {
+            Some(&campaign.status)
+        } else {
+            None
+        };
+        notify_registry(&env, campaign_id, "FundsReleased", synced_status);
+
         emit_tranche_released(&env, campaign_id, recipient, amount);
     }
 
@@ -351,6 +487,13 @@ impl ProductionEscrowContract {
         campaign.status = CampaignStatus::Harvested;
         storage::set_campaign(&env, campaign_id, &campaign);
         storage::extend_instance_ttl(&env);
+
+        notify_registry(
+            &env,
+            campaign_id,
+            "HarvestReported",
+            Some(&CampaignStatus::Harvested),
+        );
 
         emit_harvest_reported(&env, campaign_id, farmer, outcome);
     }
@@ -388,6 +531,13 @@ impl ProductionEscrowContract {
         campaign.status = CampaignStatus::Disputed;
         storage::set_campaign(&env, campaign_id, &campaign);
         storage::extend_instance_ttl(&env);
+
+        notify_registry(
+            &env,
+            campaign_id,
+            "DisputeInitiated",
+            Some(&CampaignStatus::Disputed),
+        );
 
         emit_dispute_opened(&env, campaign_id, opener, reason);
     }
@@ -448,6 +598,13 @@ impl ProductionEscrowContract {
         dispute.resolution = resolution.clone();
         storage::set_dispute(&env, campaign_id, &dispute);
         storage::extend_instance_ttl(&env);
+
+        notify_registry(
+            &env,
+            campaign_id,
+            "DisputeResolved",
+            Some(&CampaignStatus::Resolved),
+        );
 
         let admin = storage::get_admin(&env);
         emit_dispute_resolved(
@@ -532,6 +689,13 @@ impl ProductionEscrowContract {
         storage::set_campaign(&env, campaign_id, &campaign);
         storage::extend_instance_ttl(&env);
 
+        notify_registry(
+            &env,
+            campaign_id,
+            "CampaignSettled",
+            Some(&CampaignStatus::Settled),
+        );
+
         emit_campaign_settled(&env, campaign_id, farmer, farmer_payout, investor_returns);
     }
 
@@ -555,10 +719,55 @@ impl ProductionEscrowContract {
         storage::set_campaign(&env, campaign_id, &campaign);
         storage::extend_instance_ttl(&env);
 
+        // ActivityAction has no dedicated "failed" variant; CampaignStatusChanged
+        // plus the status-sync payload below carries the same information.
+        notify_registry(
+            &env,
+            campaign_id,
+            "CampaignStatusChanged",
+            Some(&CampaignStatus::Failed),
+        );
+
         emit_campaign_failed(&env, campaign_id, campaign.refundable);
     }
 
-    /// Investor claims their pro-rata share of investor returns from a Settled campaign.
+    /// Permissionless expiry of an under-funded campaign once its deadline has
+    /// passed. Anyone may call this (no authorization required): if the
+    /// campaign is still `Active`/`Funding` (i.e. the funding target was not
+    /// reached before `deadline`) and the ledger timestamp is past the
+    /// deadline, the campaign transitions to `Failed` and whatever escrowed
+    /// funds it holds become refundable to investors via `claim_refund`.
+    ///
+    /// This is the on-chain counterpart to the `deadline` enforced by
+    /// `fund_campaign`/`receive_contribution`: those keep rejecting late
+    /// contributions, while this provides a permissionless path to move an
+    /// expired, unmet campaign to `Failed` without requiring an admin to call
+    /// `mark_failed`.
+    pub fn expire_campaign(env: Env, campaign_id: u64) {
+        let mut campaign = storage::get_campaign(&env, campaign_id)
+            .unwrap_or_else(|| panic!("campaign not found"));
+        if campaign.status != CampaignStatus::Active && campaign.status != CampaignStatus::Funding {
+            panic!("campaign cannot be expired in its current state");
+        }
+        if env.ledger().timestamp() <= campaign.deadline {
+            panic!("campaign deadline has not yet passed");
+        }
+        // Guard against expiry after funding succeeded: by the time the deadline
+        // passes a funded campaign has already moved to `Funded` and is excluded
+        // by the status check above; this check is belt-and-braces.
+        if campaign.total_funded >= campaign.target_amount {
+            panic!("campaign target was reached; cannot expire");
+        }
+
+        let held = escrow_held(&campaign);
+        campaign.refundable += held;
+        campaign.status = CampaignStatus::Failed;
+        storage::set_campaign(&env, campaign_id, &campaign);
+        storage::extend_instance_ttl(&env);
+
+        emit_campaign_failed(&env, campaign_id, campaign.refundable);
+    }
+
     ///
     /// **Rounding / dust policy:** The pro-rata share is computed via integer
     /// division (`contributed * returnable / total_funded`), which truncates
