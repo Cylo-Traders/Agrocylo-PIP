@@ -46,7 +46,8 @@ describe('DatabaseModule', () => {
 
   it('allows a non-file DATABASE_URL when NODE_ENV=production', async () => {
     process.env.NODE_ENV = 'production';
-    process.env.DATABASE_URL = 'libsql://prod-db.example.com?authToken=secret';
+    process.env.DATABASE_URL =
+      'postgresql://user:secret@prod-db.example.com:5432/agrocylo';
 
     const moduleRef = await buildModule();
 

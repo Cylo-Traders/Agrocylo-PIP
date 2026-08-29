@@ -27,7 +27,7 @@ export function assertDatabaseUrlAllowed(url: string, nodeEnv: string): void {
         const url = config.get<string>('db.url')!;
         const nodeEnv = config.get<string>('app.nodeEnv')!;
         assertDatabaseUrlAllowed(url, nodeEnv);
-        const adapter = new PrismaLibSql({ url });
+        const adapter = new PrismaPg({ connectionString: url });
         return new PrismaClient({ adapter });
       },
     },
