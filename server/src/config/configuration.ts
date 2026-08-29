@@ -58,7 +58,7 @@ export default (): {
     authSecret: process.env.WS_AUTH_SECRET ?? '',
   },
   db: {
-    url: process.env.DATABASE_URL ?? 'file:./dev.db',
+    url: process.env.DATABASE_URL ?? '',
   },
   soroban: {
     rpcUrl:

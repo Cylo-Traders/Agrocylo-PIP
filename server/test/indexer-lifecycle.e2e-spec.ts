@@ -1,11 +1,7 @@
-import { rmSync } from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
 import { PrismaClient } from '../generated/prisma/client';
-import { PrismaLibSql } from '@prisma/adapter-libsql';
 import { EventParserService } from '../src/indexer/parsers/event-parser.service';
 import type { RawSorobanEvent } from '../src/indexer/types/soroban-events.types';
-import { applyMigrations } from './apply-migrations';
+import { createTestPrismaClient, resetDatabase } from './e2e-database';
 
 const CAMPAIGN_ID = 'lifecycle-campaign-1';
 const FARMER = 'GFARMER_LIFECYCLE';
@@ -30,25 +26,17 @@ function rawEvent(
 describe('Indexer campaign lifecycle (e2e)', () => {
   let prisma: PrismaClient;
   let parser: EventParserService;
-  const dbPath = path.join(
-    os.tmpdir(),
-    `agro-indexer-e2e-${process.pid}-${Date.now()}.db`,
-  );
 
   beforeAll(async () => {
-    // Fresh SQLite file per run, so the lifecycle assertions below never see
-    // state left behind by a previous run or another test file.
-    rmSync(dbPath, { force: true });
-    prisma = new PrismaClient({
-      adapter: new PrismaLibSql({ url: `file:${dbPath}` }),
-    });
-    await applyMigrations(prisma);
+    prisma = createTestPrismaClient();
+    // e2e specs share one Postgres schema, so clear it before seeding rather
+    // than assuming another file left the tables empty.
+    await resetDatabase(prisma);
     parser = new EventParserService(prisma);
   });
 
   afterAll(async () => {
     await prisma.$disconnect();
-    rmSync(dbPath, { force: true });
   });
 
   const status = async (): Promise<string> => {

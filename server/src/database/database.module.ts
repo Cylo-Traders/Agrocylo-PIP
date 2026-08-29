@@ -1,7 +1,7 @@
 import { Global, Module, OnModuleDestroy } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { PrismaClient } from '../../generated/prisma/client';
-import { PrismaLibSql } from '@prisma/adapter-libsql';
+import { PrismaPg } from '@prisma/adapter-pg';
 
 /**
  * Refuses a `file:`-scheme DATABASE_URL (the local SQLite default) in
@@ -27,7 +27,7 @@ export function assertDatabaseUrlAllowed(url: string, nodeEnv: string): void {
         const url = config.get<string>('db.url')!;
         const nodeEnv = config.get<string>('app.nodeEnv')!;
         assertDatabaseUrlAllowed(url, nodeEnv);
-        const adapter = new PrismaLibSql({ url });
+        const adapter = new PrismaPg({ connectionString: url });
         return new PrismaClient({ adapter });
       },
     },
