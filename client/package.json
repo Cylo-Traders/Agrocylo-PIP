@@ -3,6 +3,9 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "engines": {
+    "node": ">=22.12.0"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
@@ -12,7 +15,8 @@
     "format": "prettier --write \"*.{ts,tsx,js,cjs,mjs,json,css}\" \"src/**/*.{ts,tsx,css,json}\"",
     "format:check": "prettier --check \"*.{ts,tsx,js,cjs,mjs,json,css}\" \"src/**/*.{ts,tsx,css,json}\"",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "prepare": "cd .. && husky client/.husky"
   },
   "lint-staged": {
     "*.{ts,tsx}": [

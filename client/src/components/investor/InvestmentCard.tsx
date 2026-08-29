@@ -1,21 +1,13 @@
 import React, { useState } from 'react';
 import type { FundedInvestment } from '../../lib/soroban/investorService';
+import { StatusBadge } from '../campaign/StatusBadge';
+import type { CampaignStatusTag } from '../../lib/soroban/types';
 
 export interface InvestmentCardProps {
   investment: FundedInvestment;
   onClaimRefund: (campaignId: string) => Promise<void>;
   onClaimReturn: (campaignId: string) => Promise<void>;
 }
-
-const statusBadgeStyles: Record<string, string> = {
-  Active: 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300',
-  Funding:
-    'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300',
-  Settled:
-    'bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300',
-  Resolved: 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300',
-  Failed: 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300',
-};
 
 export const InvestmentCard: React.FC<InvestmentCardProps> = ({
   investment,
@@ -51,36 +43,27 @@ export const InvestmentCard: React.FC<InvestmentCardProps> = ({
     !investment.claimed;
 
   return (
-    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4 transition hover:border-slate-300 dark:hover:border-slate-700">
+    <div className="rounded-campaign border border-soil-200 bg-white p-6 shadow-campaign flex flex-col md:flex-row md:items-center justify-between gap-4 transition hover:border-soil-300">
       <div className="space-y-2">
         <div className="flex items-center gap-3">
-          <span
-            className={`px-3 py-1 text-xs font-semibold rounded-full ${
-              statusBadgeStyles[investment.status] ||
-              'bg-slate-100 text-slate-800'
-            }`}
-          >
-            {investment.status}
-          </span>
-          <span className="text-xs font-mono text-slate-600 dark:text-slate-400">
+          <StatusBadge status={investment.status as CampaignStatusTag} />
+          <span className="text-xs font-mono text-soil-500">
             ID: {investment.campaignId}
           </span>
         </div>
 
-        <h3 className="text-lg font-bold text-slate-900 dark:text-white">
-          {investment.title}
-        </h3>
+        <h3 className="text-lg font-bold text-soil-900">{investment.title}</h3>
 
-        <div className="flex items-center gap-6 text-sm text-slate-600 dark:text-slate-400">
+        <div className="flex items-center gap-6 text-sm text-soil-500">
           <div>
             Contributed:{' '}
-            <span className="font-semibold text-slate-900 dark:text-white">
+            <span className="font-semibold text-soil-900">
               ${investment.amountContributed.toLocaleString()}
             </span>
           </div>
           <div>
             Claimable:{' '}
-            <span className="font-semibold text-emerald-700 dark:text-emerald-400">
+            <span className="font-semibold text-leaf-700">
               ${investment.claimableAmount.toLocaleString()}
             </span>
           </div>
@@ -89,7 +72,7 @@ export const InvestmentCard: React.FC<InvestmentCardProps> = ({
 
       <div className="flex items-center justify-end">
         {investment.claimed ? (
-          <span className="rounded-xl border border-slate-200 bg-slate-100 px-4 py-2 text-xs font-semibold text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400">
+          <span className="rounded-xl border border-soil-200 bg-soil-100 px-4 py-2 text-xs font-semibold text-soil-600">
             <span aria-hidden="true">✓</span> Claimed
           </span>
         ) : isRefundable ? (
@@ -106,12 +89,12 @@ export const InvestmentCard: React.FC<InvestmentCardProps> = ({
             type="button"
             onClick={() => void handleClaim()}
             disabled={claiming}
-            className="rounded-xl bg-emerald-700 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-800 disabled:opacity-50"
+            className="rounded-xl bg-leaf-700 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-leaf-800 disabled:opacity-50"
           >
             {claiming ? 'Claiming...' : 'Claim Return'}
           </button>
         ) : (
-          <span className="text-xs italic text-slate-600 dark:text-slate-400">
+          <span className="text-xs italic text-soil-500">
             No payout pending
           </span>
         )}

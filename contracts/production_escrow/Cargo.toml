@@ -8,10 +8,11 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 soroban-sdk = { workspace = true }
+escrow_types = { path = "../escrow_types" }
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
 proptest = "1.5"
 
 [features]
-testutils = ["soroban-sdk/testutils"]
+testutils = ["soroban-sdk/testutils", "escrow_types/testutils"]

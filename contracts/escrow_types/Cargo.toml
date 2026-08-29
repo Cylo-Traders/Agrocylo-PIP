@@ -1,0 +1,20 @@
+[package]
+name = "escrow_types"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# Deliberately NOT a contract crate: no `#[contract]`, no `#[contractimpl]`,
+# and no `cdylib` output. It holds only the `#[contracttype]` definitions that
+# make up ProductionEscrowContract's wire format, so other contracts (notably
+# `registry`) can decode escrow values without linking the escrow contract
+# itself — which would emit both contracts' exported wasm symbols into the
+# same module and fail to link.
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+soroban-sdk = { workspace = true }
+
+[features]
+testutils = ["soroban-sdk/testutils"]

@@ -1,13 +1,8 @@
-use crate::{events, storage};
 use crate::types::FarmerProfile;
+use crate::{events, storage};
 use soroban_sdk::{Address, Env, String};
 
-pub fn register_farmer(
-    env: &Env,
-    farmer: Address,
-    name: String,
-    location: String,
-) {
+pub fn register_farmer(env: &Env, farmer: Address, name: String, location: String) {
     farmer.require_auth();
 
     if storage::has_farmer(env, &farmer) {

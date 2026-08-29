@@ -12,6 +12,15 @@ on:
       - "client/**"
       - ".github/workflows/client-ci.yml"
 
+# A newer push to the same PR cancels the previous run instead of queueing
+# behind it, so contributors see the result for their latest commit.
+concurrency:
+  group: client-${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
 jobs:
   client:
     name: Lint, typecheck, test, build
@@ -27,7 +36,9 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # Must satisfy every tool's `engines` range — lint-staged 17 needs
+          # >= 22.22.1, which Node 20 does not meet.
+          node-version: 22
           cache: npm
           cache-dependency-path: client/package-lock.json
 

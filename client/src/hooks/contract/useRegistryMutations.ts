@@ -7,6 +7,44 @@ import {
 import { contractQueryKeys } from './queryKeys';
 import { useMutationToasts } from './mutationToasts';
 
+export interface RegisterFarmerInput {
+  farmer: string;
+  name: string;
+  location: string;
+}
+
+/** Registers a farmer profile (name/location) with the RegistryContract. */
+export function useRegisterFarmer() {
+  const wallet = useWallet();
+  const queryClient = useQueryClient();
+  const { notifySuccess, notifyError } = useMutationToasts({
+    success: 'Farmer profile registered',
+    error: 'Could not register farmer profile',
+  });
+
+  return useMutation({
+    mutationFn: async (input: RegisterFarmerInput) => {
+      return invokeContractWrite(
+        getRegistryClient(),
+        'register_farmer',
+        {
+          farmer: input.farmer,
+          name: input.name,
+          location: input.location,
+        },
+        wallet,
+      );
+    },
+    onSuccess: (_data, input) => {
+      notifySuccess(`Welcome, ${input.name}.`);
+      queryClient.invalidateQueries({
+        queryKey: contractQueryKeys.farmer(input.farmer),
+      });
+    },
+    onError: notifyError,
+  });
+}
+
 export interface RegisterCampaignInput {
   campaignId: bigint;
   farmer: string;

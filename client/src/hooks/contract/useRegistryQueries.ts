@@ -5,7 +5,11 @@ import {
 } from '../../lib/soroban/contractClient';
 import { isRegistryConfigured } from '../../lib/soroban/config';
 import { contractQueryKeys } from './queryKeys';
-import type { ActivityRecord, FarmerProfile } from '../../lib/soroban/types';
+import type {
+  ActivityRecord,
+  CampaignInfo,
+  FarmerProfile,
+} from '../../lib/soroban/types';
 
 /** Read hooks for RegistryContract state (farmer profiles, campaign activity log). */
 
@@ -20,6 +24,43 @@ export function useFarmer(address: string | undefined) {
         'get_farmer',
       )({ farmer: address! });
       return tx.result;
+    },
+  });
+}
+
+export interface FarmerCampaignSummary extends CampaignInfo {
+  id: bigint;
+}
+
+/**
+ * A farmer's registered campaigns, joined from `get_campaigns_by_farmer` (ids)
+ * + `get_campaign` (title/description/created_at) per id. Independent of
+ * whether the farmer has a `FarmerProfile` -- campaign/farmer linkage is
+ * tracked separately from profile registration, so this can be non-empty
+ * even for an address that hasn't registered a profile yet.
+ */
+export function useFarmerCampaigns(address: string | undefined) {
+  return useQuery({
+    queryKey: contractQueryKeys.farmerCampaigns(address ?? ''),
+    enabled: Boolean(address) && isRegistryConfigured(),
+    queryFn: async (): Promise<FarmerCampaignSummary[]> => {
+      const client = await getRegistryClient();
+      const idsTx = await contractMethod<bigint[]>(
+        client,
+        'get_campaigns_by_farmer',
+      )({ farmer: address! });
+
+      const campaigns = await Promise.all(
+        idsTx.result.map(async (id) => {
+          const tx = await contractMethod<CampaignInfo | undefined>(
+            client,
+            'get_campaign',
+          )({ campaign_id: id });
+          return tx.result ? { ...tx.result, id } : null;
+        }),
+      );
+
+      return campaigns.filter((c): c is FarmerCampaignSummary => c !== null);
     },
   });
 }

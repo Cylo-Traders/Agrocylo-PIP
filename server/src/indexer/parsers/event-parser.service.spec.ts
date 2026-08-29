@@ -4,7 +4,11 @@ import type { RawSorobanEvent } from '../types/soroban-events.types';
 
 type MockPrisma = {
   transaction: { findUnique: jest.Mock; create: jest.Mock };
-  campaign: { upsert: jest.Mock; update: jest.Mock };
+  campaign: {
+    upsert: jest.Mock;
+    update: jest.Mock;
+    updateMany: jest.Mock;
+  };
   user: { upsert: jest.Mock };
   investment: { create: jest.Mock };
   tranche: { create: jest.Mock };
@@ -20,6 +24,7 @@ function makeMockPrisma(): MockPrisma {
     campaign: {
       upsert: jest.fn().mockResolvedValue({}),
       update: jest.fn().mockResolvedValue({}),
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
     user: {
       upsert: jest.fn().mockResolvedValue({}),
@@ -181,6 +186,63 @@ describe('EventParserService', () => {
     });
   });
 
+  describe('ContribReconciled', () => {
+    it('is parsed (not silently dropped), increments totalFunded, and persists a Transaction row tagged distinctly from ContribReceived', async () => {
+      const emitCampaignEvent = jest.fn();
+      const withRealtime = new EventParserService(
+        prisma as any,
+        {
+          emitCampaignEvent,
+        } as any,
+      );
+
+      await withRealtime.processEvent(
+        rawEvent(
+          'e-recon1',
+          ['ContribReconciled', CAMPAIGN_ID],
+          [INVESTOR, 1700000000n, 250n],
+        ),
+      );
+
+      // Never conflated with a genuine on-chain deposit.
+      expect(prisma.investment.create).not.toHaveBeenCalled();
+
+      expect(prisma.campaign.update).toHaveBeenCalledWith({
+        where: { id: '123' },
+        data: { totalFunded: { increment: 250n } },
+      });
+
+      expect(prisma.transaction.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            id: 'e-recon1',
+            type: 'campaign.contrib_reconciled',
+            userId: INVESTOR,
+            amount: 250n,
+            status: 'Confirmed',
+          }),
+        }),
+      );
+
+      // Broadcast end-to-end, distinguishable from a normal contribution.
+      expect(emitCampaignEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'campaign.contrib_reconciled',
+          campaignId: '123',
+        }),
+      );
+    });
+
+    it('logs and skips a malformed payload', async () => {
+      await service.processEvent(
+        rawEvent('e-recon-bad', ['ContribReconciled', CAMPAIGN_ID], [INVESTOR]),
+      );
+
+      expect(errorSpy).toHaveBeenCalled();
+      expect(prisma.transaction.create).not.toHaveBeenCalled();
+    });
+  });
+
   describe('CampaignFunded', () => {
     it('marks the campaign Funded with the authoritative total', async () => {
       await service.processEvent(
@@ -245,6 +307,40 @@ describe('EventParserService', () => {
           }),
         }),
       );
+    });
+
+    it('advances a Funded campaign to InProduction on the first release', async () => {
+      await service.processEvent(
+        rawEvent(
+          'e5-first',
+          ['TrancheReleased', CAMPAIGN_ID],
+          [FARMER, 1700000000n, 400n],
+        ),
+      );
+
+      expect(prisma.campaign.updateMany).toHaveBeenCalledWith({
+        where: { id: '123', status: 'Funded' },
+        data: { status: 'InProduction' },
+      });
+    });
+
+    it('scopes the status advance to Funded so later releases are a no-op', async () => {
+      await service.processEvent(
+        rawEvent(
+          'e5-later',
+          ['TrancheReleased', CAMPAIGN_ID],
+          [FARMER, 1700000000n, 200n],
+        ),
+      );
+
+      // The transition is conditional on the current status: an
+      // InProduction campaign won't match the where clause, so a
+      // second/third release never resets or duplicate-writes the status.
+      expect(prisma.campaign.updateMany).toHaveBeenCalledWith({
+        where: { id: '123', status: 'Funded' },
+        data: { status: 'InProduction' },
+      });
+      expect(prisma.campaign.update).not.toHaveBeenCalled();
     });
 
     it('logs and skips a malformed payload', async () => {
@@ -394,7 +490,7 @@ describe('EventParserService', () => {
       });
       expect(prisma.campaign.update).toHaveBeenCalledWith({
         where: { id: '123' },
-        data: { status: 'Resolved' },
+        data: { status: 'Resolved', refundable: { increment: 50n } },
       });
     });
 
@@ -410,7 +506,7 @@ describe('EventParserService', () => {
       expect(prisma.dispute.update).not.toHaveBeenCalled();
       expect(prisma.campaign.update).toHaveBeenCalledWith({
         where: { id: '123' },
-        data: { status: 'Resolved' },
+        data: { status: 'Resolved', refundable: { increment: 500n } },
       });
     });
 
@@ -434,7 +530,7 @@ describe('EventParserService', () => {
       );
       expect(prisma.campaign.update).toHaveBeenCalledWith({
         where: { id: '123' },
-        data: { status: 'Settled' },
+        data: { status: 'Settled', returnable: { increment: 100n } },
       });
     });
 
@@ -574,6 +670,53 @@ describe('EventParserService', () => {
       );
     });
 
+    it('does not corrupt the title when the mirror tag decodes as a bare string', async () => {
+      await service.processEvent(
+        rawEvent(
+          'e18c',
+          ['CampaignRegistered', CAMPAIGN_ID],
+          [FARMER, 'CampaignCreated', 1700000000n, 13],
+        ),
+      );
+      expect(prisma.campaign.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          create: expect.objectContaining({ farmer: FARMER, title: '' }),
+        }),
+      );
+    });
+
+    it('does not corrupt the title when the mirror tag decodes as a { tag } object', async () => {
+      await service.processEvent(
+        rawEvent(
+          'e18d',
+          ['CampaignRegistered', CAMPAIGN_ID],
+          [FARMER, { tag: 'CampaignCreated' }, 1700000000n, 13],
+        ),
+      );
+      expect(prisma.campaign.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          create: expect.objectContaining({ farmer: FARMER, title: '' }),
+        }),
+      );
+    });
+
+    it('keeps a real farmer title that merely contains a variant word', async () => {
+      await service.processEvent(
+        rawEvent(
+          'e18e',
+          ['CampaignRegistered', CAMPAIGN_ID],
+          [FARMER, 'CampaignCreated fundraiser', 1700000000n, 13],
+        ),
+      );
+      expect(prisma.campaign.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          create: expect.objectContaining({
+            title: 'CampaignCreated fundraiser',
+          }),
+        }),
+      );
+    });
+
     it('logs and skips a malformed payload', async () => {
       await service.processEvent(
         rawEvent('e18-bad', ['CampaignRegistered', CAMPAIGN_ID], [FARMER]),
@@ -689,9 +832,12 @@ describe('EventParserService', () => {
   describe('broadcast-after-persist wiring', () => {
     it('emits a realtime event only after the DB write succeeds', async () => {
       const emitCampaignEvent = jest.fn();
-      const withRealtime = new EventParserService(prisma as any, {
-        emitCampaignEvent,
-      } as any);
+      const withRealtime = new EventParserService(
+        prisma as any,
+        {
+          emitCampaignEvent,
+        } as any,
+      );
 
       await withRealtime.processEvent(
         rawEvent(
@@ -713,9 +859,12 @@ describe('EventParserService', () => {
     it('does not emit for already-persisted (replayed) events', async () => {
       const emitCampaignEvent = jest.fn();
       prisma.transaction.findUnique.mockResolvedValueOnce({ id: 'e-rt2' });
-      const withRealtime = new EventParserService(prisma as any, {
-        emitCampaignEvent,
-      } as any);
+      const withRealtime = new EventParserService(
+        prisma as any,
+        {
+          emitCampaignEvent,
+        } as any,
+      );
 
       await withRealtime.processEvent(
         rawEvent(
@@ -730,9 +879,12 @@ describe('EventParserService', () => {
 
     it('does not emit when the parsed event has no campaignId', async () => {
       const emitCampaignEvent = jest.fn();
-      const withRealtime = new EventParserService(prisma as any, {
-        emitCampaignEvent,
-      } as any);
+      const withRealtime = new EventParserService(
+        prisma as any,
+        {
+          emitCampaignEvent,
+        } as any,
+      );
 
       await withRealtime.processEvent(
         rawEvent(

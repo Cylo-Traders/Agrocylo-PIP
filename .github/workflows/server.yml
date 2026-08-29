@@ -2,22 +2,39 @@ name: Server
 
 on:
   push:
-    branches: [master]
+    branches: [master, main]
     paths:
       - "server/**"
+      - ".github/workflows/server.yml"
   pull_request:
-    branches: [master]
+    branches: [master, main]
     paths:
       - "server/**"
+      - ".github/workflows/server.yml"
+
+# A newer push to the same PR cancels the previous run instead of queueing
+# behind it, so contributors see the result for their latest commit.
+concurrency:
+  group: server-${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
   build-and-test:
+    name: Lint, typecheck, build, test
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: server
     env:
+      # Both are read at module load, so they must be set for every step that
+      # boots the Nest application (unit tests, e2e tests).
       CORS_ALLOWED_ORIGINS: http://localhost:5173
+      # libSQL creates this file on first connection — no migration or service
+      # container is needed for the health check's `SELECT 1`.
+      DATABASE_URL: file:./dev.db
 
     steps:
       - uses: actions/checkout@v4
@@ -25,7 +42,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: server/package-lock.json
 
@@ -37,6 +54,14 @@ jobs:
 
       - name: Lint
         run: npm run lint
+
+      - name: Format check
+        run: npm run format:check
+
+      # Covers test/**, which `nest build` excludes — without this, type errors
+      # in the e2e specs only surface when jest runs them.
+      - name: Typecheck
+        run: npm run typecheck
 
       - name: Build
         run: npm run build
