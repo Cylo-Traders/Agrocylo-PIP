@@ -7,6 +7,12 @@ export { AdminDashboardPage } from './AdminDashboardPage';
 export { ActivityFeedPage } from './ActivityFeedPage';
 export { FarmerProfilePage } from './FarmerProfilePage';
 
+// InvestorDashboardPage is the real implementation exported from ./InvestorDashboardPage
+// (Issue #144: previously a placeholder was defined here with the same name, causing
+// a silent shadowing bug where `import { InvestorDashboardPage } from './pages'`
+// would get the placeholder instead of the real component.)
+export { InvestorDashboardPage } from './InvestorDashboardPage';
+
 type PlaceholderPageProps = {
   eyebrow: string;
   title: string;
@@ -75,17 +81,8 @@ export function FarmerDashboardPage() {
   );
 }
 
-export function InvestorDashboardPage() {
-  return (
-    <PlaceholderPage
-      eyebrow="Dashboard"
-      title="Investor dashboard"
-      description="Monitor your agricultural investments, campaign progress, and returns."
-    />
-  );
-}
-
 // ActivityFeedPage is the real implementation exported from ./ActivityFeedPage
+// InvestorDashboardPage is the real implementation exported from ./InvestorDashboardPage (Issue #144)
 // FarmerProfilePage is the real implementation exported from ./FarmerProfilePage
 
 export function NotFoundPage() {

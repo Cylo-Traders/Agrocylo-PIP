@@ -7,6 +7,11 @@ import { useCampaignLiveUpdates } from '../hooks/useCampaignLiveUpdates';
 import { useCampaign } from '../hooks/contract/useEscrowQueries';
 import { DetailPageSkeleton } from '../components/ui/Skeleton/Skeleton';
 
+const cardClass =
+  'rounded-campaign border border-soil-200 bg-white p-6 shadow-campaign';
+const primaryButtonClass =
+  'rounded-lg bg-leaf-700 px-6 py-3 font-semibold text-white shadow-campaign transition hover:bg-leaf-800 disabled:opacity-50';
+
 export const CampaignDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -18,7 +23,7 @@ export const CampaignDetailPage: React.FC = () => {
 
   if (isLoading) {
     return (
-      <div className="max-w-4xl mx-auto p-6">
+      <div className="mx-auto max-w-4xl p-6">
         <DetailPageSkeleton />
       </div>
     );
@@ -26,12 +31,10 @@ export const CampaignDetailPage: React.FC = () => {
 
   if (isError || !campaign || !id) {
     return (
-      <div className="max-w-4xl mx-auto p-6 space-y-6">
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm text-center py-12 space-y-3">
-          <h2 className="text-xl font-bold text-slate-900 dark:text-white">
-            Campaign Not Found
-          </h2>
-          <p className="text-sm text-slate-600 dark:text-slate-400 max-w-md mx-auto">
+      <div className="mx-auto max-w-4xl space-y-6 p-6">
+        <div className={`${cardClass} py-12 text-center`}>
+          <h2 className="text-h4 text-soil-900">Campaign Not Found</h2>
+          <p className="mx-auto mt-2 max-w-md text-body-sm text-soil-500">
             The requested campaign &quot;{id || ''}&quot; could not be loaded
             from the on-chain contract.
           </p>
@@ -63,37 +66,33 @@ export const CampaignDetailPage: React.FC = () => {
   };
 
   return (
-    <div className="max-w-4xl mx-auto p-6 space-y-6">
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm">
+    <div className="mx-auto max-w-4xl space-y-6 p-6">
+      <div className={cardClass}>
         <div className="flex items-center justify-between">
           <StatusBadge status={status} />
-          <span className="text-sm font-mono text-slate-600 dark:text-slate-400">
+          <span className="font-mono text-caption text-soil-500">
             ID: {id}
           </span>
         </div>
 
-        <h1 className="text-2xl font-bold text-slate-900 dark:text-white mt-3">
-          {title}
-        </h1>
-        <p className="text-slate-600 dark:text-slate-300 mt-2">
+        <h1 className="mt-3 text-h2 text-soil-900">{title}</h1>
+        <p className="mt-2 text-body text-soil-600">
           Farmer: {campaign.farmer}
         </p>
 
         <div className="mt-6 space-y-2">
-          <div className="flex justify-between text-sm">
-            <span className="font-semibold text-slate-900 dark:text-white">
+          <div className="flex justify-between text-body-sm">
+            <span className="font-semibold text-soil-900">
               ${currentRaised.toLocaleString()}{' '}
-              <span className="font-normal text-slate-600 dark:text-slate-400">
-                raised
-              </span>
+              <span className="font-normal text-soil-500">raised</span>
             </span>
-            <span className="font-medium text-slate-500">
+            <span className="font-medium text-soil-500">
               Target: ${totalTarget.toLocaleString()} ({percentage}%)
             </span>
           </div>
 
           <div
-            className="h-3 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800"
+            className="h-3 w-full overflow-hidden rounded-full bg-soil-100"
             role="progressbar"
             aria-valuenow={percentage}
             aria-valuemin={0}
@@ -101,13 +100,13 @@ export const CampaignDetailPage: React.FC = () => {
             aria-label={`Campaign funding progress: ${percentage}% of target raised`}
           >
             <div
-              className="h-full rounded-full bg-emerald-600 transition-all duration-500"
+              className="h-full rounded-full bg-leaf-600 transition-all duration-500"
               style={{ width: `${percentage}%` }}
             />
           </div>
         </div>
 
-        <div className="mt-6 flex justify-end border-t border-slate-100 pt-4 dark:border-slate-800">
+        <div className="mt-6 flex justify-end border-t border-soil-100 pt-4">
           <button
             type="button"
             onClick={() => setIsModalOpen(true)}
@@ -115,7 +114,7 @@ export const CampaignDetailPage: React.FC = () => {
               currentRaised >= totalTarget ||
               (status !== 'Funding' && status !== 'Active')
             }
-            className="rounded-xl bg-emerald-700 px-6 py-3 font-semibold text-white shadow-md transition hover:bg-emerald-800 disabled:opacity-50"
+            className={primaryButtonClass}
           >
             Fund this campaign
           </button>
@@ -132,7 +131,7 @@ export const CampaignDetailPage: React.FC = () => {
         onSuccess={handleFundingSuccess}
       />
 
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm">
+      <div className={cardClass}>
         <ActivityFeed
           campaignId={numericCampaignId}
           pageSize={10}
