@@ -7,6 +7,11 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'happy-dom',
+    // Default (5000ms) is tight for tests with dynamic imports or axe-core
+    // scans once the full suite is under load (transform/module-resolution
+    // overhead competing across files); this is CI-runner-variance headroom,
+    // not a license for genuinely slow tests.
+    testTimeout: 15000,
     setupFiles: ['./src/test/setup.ts'],
     include: ['src/**/*.{test,spec}.{ts,tsx}'],
     exclude: [
@@ -17,7 +22,6 @@ export default defineConfig({
       '.cache/',
       // Exclude problematic test files from other parts of the project
       'src/__tests__/campaignService.test.ts',
-      'src/__tests__/investorService.test.ts',
       'src/App.test.ts',
     ],
     coverage: {

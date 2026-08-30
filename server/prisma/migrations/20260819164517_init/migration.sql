@@ -13,7 +13,7 @@ CREATE TABLE "Campaign" (
     "trancheCount" INTEGER,
     "harvestOutcome" TEXT,
     "harvestReportedAt" BIGINT,
-    "refundable" BIGINT,
+    "refundable" BIGINT NOT NULL DEFAULT 0,
     "createdAt" BIGINT NOT NULL,
     "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 

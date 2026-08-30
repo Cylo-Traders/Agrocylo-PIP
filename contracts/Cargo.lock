@@ -470,6 +470,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2bfcf67fea2815c2fc3b90873fae90957be12ff417335dfadc7f52927feb03b2"
 
 [[package]]
+name = "escrow_types"
+version = "0.1.0"
+dependencies = [
+ "soroban-sdk",
+]
+
+[[package]]
 name = "ethnum"
 version = "1.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -928,6 +935,7 @@ dependencies = [
 name = "production_escrow"
 version = "0.1.0"
 dependencies = [
+ "escrow_types",
  "proptest",
  "soroban-sdk",
 ]
@@ -1076,6 +1084,7 @@ checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 name = "registry"
 version = "0.1.0"
 dependencies = [
+ "escrow_types",
  "soroban-sdk",
 ]
 

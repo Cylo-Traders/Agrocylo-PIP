@@ -21,7 +21,7 @@
 //!   CampaignStatusUpdated, ActivityRecorded
 
 use production_escrow::{
-    CampaignStatus, DisputeResolution, ProductionEscrowContract, ProductionEscrowContractClient,
+    DisputeResolution, ProductionEscrowContract, ProductionEscrowContractClient,
 };
 use registry::{ActivityAction, RegistryContract, RegistryContractClient};
 use soroban_sdk::{
@@ -50,7 +50,6 @@ fn assert_event(env: &Env, contract_id: &Address, topic_name: &str) {
          renamed/removed, or the triggering code path was not exercised."
     );
 }
-
 
 // ─── ProductionEscrowContract event coverage ─────────────────────────────────
 
@@ -184,11 +183,7 @@ fn escrow_events_all_documented_symbols_are_emitted() {
     );
     escrow.fund_campaign(&disputed_campaign, &investor2, &400i128);
     escrow.fund_campaign(&disputed_campaign, &investor1, &600i128);
-    escrow.open_dispute(
-        &disputed_campaign,
-        &investor1,
-        &Symbol::new(&env, "delay"),
-    );
+    escrow.open_dispute(&disputed_campaign, &investor1, &Symbol::new(&env, "delay"));
     assert_event(&env, &escrow_id, "DisputeOpened");
 
     escrow.resolve_dispute(
@@ -269,19 +264,11 @@ fn registry_events_all_documented_symbols_are_emitted() {
     // ── CampaignStatusUpdated ─────────────────────────────────────────────
     // escrow_id is the registered escrow for this campaign (set via link_campaign_escrow)
     // and is therefore authorized as the caller.  admin was transferred to new_admin above.
-    registry.update_campaign_status(
-        &campaign_id,
-        &escrow_id,
-        &registry::CampaignStatus::Funded,
-    );
+    registry.update_campaign_status(&campaign_id, &escrow_id, &registry::CampaignStatus::Funded);
     assert_event(&env, &registry_id, "CampaignStatusUpdated");
 
     // ── ActivityRecorded ──────────────────────────────────────────────────
     // record_activity always emits ActivityRecorded regardless of action type.
-    registry.record_activity(
-        &campaign_id,
-        &farmer,
-        &ActivityAction::HarvestReported,
-    );
+    registry.record_activity(&campaign_id, &farmer, &ActivityAction::HarvestReported);
     assert_event(&env, &registry_id, "ActivityRecorded");
 }

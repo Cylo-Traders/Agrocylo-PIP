@@ -1,4 +1,4 @@
-use crate::types::{Campaign, DataKey, Dispute, HarvestRecord, TrancheList};
+use crate::{Campaign, DataKey, Dispute, HarvestRecord, TrancheList};
 use soroban_sdk::{Address, Env, Vec};
 
 const DAY_IN_LEDGERS: u32 = 17280;
@@ -14,9 +14,11 @@ pub fn extend_instance_ttl(env: &Env) {
 }
 
 fn extend_persistent_ttl(env: &Env, key: &DataKey) {
-    env.storage()
-        .persistent()
-        .extend_ttl(key, PERSISTENT_LIFETIME_THRESHOLD, PERSISTENT_BUMP_AMOUNT);
+    env.storage().persistent().extend_ttl(
+        key,
+        PERSISTENT_LIFETIME_THRESHOLD,
+        PERSISTENT_BUMP_AMOUNT,
+    );
 }
 
 pub fn has_admin(env: &Env) -> bool {
@@ -31,16 +33,26 @@ pub fn set_admin(env: &Env, admin: &Address) {
     env.storage().instance().set(&DataKey::Admin, admin);
 }
 
+pub fn get_registry(env: &Env) -> Option<Address> {
+    env.storage().instance().get(&DataKey::Registry)
+}
+
+pub fn set_registry(env: &Env, registry: &Address) {
+    env.storage().instance().set(&DataKey::Registry, registry);
+}
+
 pub fn has_campaign(env: &Env, campaign_id: u64) -> bool {
     env.storage()
         .persistent()
         .has(&DataKey::Campaign(campaign_id))
 }
 
-pub fn get_campaign(env: &Env, campaign_id: u64) -> Campaign {
+pub fn get_campaign(env: &Env, campaign_id: u64) -> Option<Campaign> {
     let key = DataKey::Campaign(campaign_id);
-    let campaign = env.storage().persistent().get(&key).unwrap();
-    extend_persistent_ttl(env, &key);
+    let campaign = env.storage().persistent().get(&key);
+    if campaign.is_some() {
+        extend_persistent_ttl(env, &key);
+    }
     campaign
 }
 
@@ -50,10 +62,12 @@ pub fn set_campaign(env: &Env, campaign_id: u64, campaign: &Campaign) {
     extend_persistent_ttl(env, &key);
 }
 
-pub fn get_dispute(env: &Env, campaign_id: u64) -> Dispute {
+pub fn get_dispute(env: &Env, campaign_id: u64) -> Option<Dispute> {
     let key = DataKey::Dispute(campaign_id);
-    let dispute = env.storage().persistent().get(&key).unwrap();
-    extend_persistent_ttl(env, &key);
+    let dispute = env.storage().persistent().get(&key);
+    if dispute.is_some() {
+        extend_persistent_ttl(env, &key);
+    }
     dispute
 }
 
@@ -80,10 +94,11 @@ pub fn set_contribution(env: &Env, campaign_id: u64, investor: &Address, amount:
 
 pub fn get_tranches(env: &Env, campaign_id: u64) -> TrancheList {
     let key = DataKey::Tranches(campaign_id);
-    env.storage()
-        .persistent()
-        .get(&key)
-        .unwrap_or_else(|| Vec::new(env))
+    let tranches = env.storage().persistent().get(&key);
+    if tranches.is_some() {
+        extend_persistent_ttl(env, &key);
+    }
+    tranches.unwrap_or_else(|| Vec::new(env))
 }
 
 pub fn set_tranches(env: &Env, campaign_id: u64, tranches: &TrancheList) {
@@ -92,10 +107,12 @@ pub fn set_tranches(env: &Env, campaign_id: u64, tranches: &TrancheList) {
     extend_persistent_ttl(env, &key);
 }
 
-pub fn get_harvest_record(env: &Env, campaign_id: u64) -> HarvestRecord {
+pub fn get_harvest_record(env: &Env, campaign_id: u64) -> Option<HarvestRecord> {
     let key = DataKey::HarvestRecord(campaign_id);
-    let record = env.storage().persistent().get(&key).unwrap();
-    extend_persistent_ttl(env, &key);
+    let record = env.storage().persistent().get(&key);
+    if record.is_some() {
+        extend_persistent_ttl(env, &key);
+    }
     record
 }
 
@@ -103,4 +120,31 @@ pub fn set_harvest_record(env: &Env, campaign_id: u64, record: &HarvestRecord) {
     let key = DataKey::HarvestRecord(campaign_id);
     env.storage().persistent().set(&key, record);
     extend_persistent_ttl(env, &key);
+}
+
+/// Extends the TTL of every persistent entry associated with `campaign_id`
+/// (`Campaign`, `Dispute`, `Tranches`, `HarvestRecord`) without reading or
+/// mutating any of their values.
+///
+/// This is the keep-alive used by `touch_campaign`: once a campaign reaches a
+/// terminal state (`Settled`, `Failed`, `Resolved`) no write path touches its
+/// storage entries again, so without periodic extension they would lapse and
+/// be archived, becoming unreadable (see the contract README's
+/// "Storage expiry & keep-alives" section). Nothing is extended if an entry
+/// is already archived (its `has` is then false and it must be restored via
+/// `RestoreFootprintOp` first).
+pub fn touch_campaign(env: &Env, campaign_id: u64) {
+    for key in [
+        DataKey::Campaign(campaign_id),
+        DataKey::Dispute(campaign_id),
+        DataKey::Tranches(campaign_id),
+        DataKey::HarvestRecord(campaign_id),
+    ] {
+        if env.storage().persistent().has(&key) {
+            extend_persistent_ttl(env, &key);
+        }
+    }
+    // Per-investor contributions are keyed by investor address, so they cannot
+    // be enumerated here; a keeper that needs to keep contribution records
+    // alive must touch them through the ordinary reads/writes on that address.
 }

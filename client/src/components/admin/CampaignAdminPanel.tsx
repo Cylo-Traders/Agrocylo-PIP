@@ -16,6 +16,7 @@ import {
   isValidContractSymbol,
 } from '../../lib/soroban/symbol';
 import type { AdminCampaignOverview } from '../../hooks/useAdminCampaigns';
+import { presentationalCampaignStatus } from '../../lib/campaignStatus';
 import type { DisputeResolutionTag } from '../../lib/soroban/types';
 
 const cardClass =
@@ -583,6 +584,11 @@ export function CampaignAdminPanel({
   const { id, campaign } = overview;
   const status = campaign.status.tag;
   const held = escrowHeld(campaign);
+  const productionProgress = { releasedAmount: campaign.released };
+  const displayStatus = presentationalCampaignStatus(
+    status,
+    productionProgress,
+  );
 
   return (
     <div className={cardClass}>
@@ -593,11 +599,11 @@ export function CampaignAdminPanel({
             Farmer: {campaign.farmer}
           </p>
         </div>
-        <StatusBadge status={status} />
+        <StatusBadge status={displayStatus} />
       </div>
 
       <div className="mt-4">
-        <LifecycleStepper status={status} />
+        <LifecycleStepper status={status} releasedAmount={campaign.released} />
       </div>
 
       <dl className="mt-4 grid grid-cols-2 gap-3 text-body-sm sm:grid-cols-4">

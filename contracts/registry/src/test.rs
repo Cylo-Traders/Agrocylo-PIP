@@ -135,7 +135,9 @@ fn test_revoke_contract() {
 
 #[test]
 fn test_approve_contract_requires_admin_auth() {
-    let (env, admin, _, contract_addr, client) = create_test_env();
+    // This test generates its own admin/contract addresses below, so the ones
+    // returned by the harness are deliberately discarded.
+    let (env, _, _, _, client) = create_test_env();
 
     let admin = Address::generate(&env);
     let contract_addr = Address::generate(&env);
@@ -494,7 +496,7 @@ fn test_register_farmer_requires_authorization() {
 
 #[test]
 fn test_get_farmer_nonexistent() {
-    let (env, admin, user, _, client) = create_test_env();
+    let (_, admin, user, _, client) = create_test_env();
     client.initialize(&admin);
 
     let farmer_profile = client.get_farmer(&user);
@@ -597,7 +599,7 @@ fn test_register_campaign_requires_authorization() {
 
 #[test]
 fn test_get_campaign_nonexistent() {
-    let (env, admin, _, _, client) = create_test_env();
+    let (_, admin, _, _, client) = create_test_env();
     client.initialize(&admin);
 
     let campaign = client.get_campaign(&999u64);
@@ -663,9 +665,15 @@ fn test_link_campaign_escrow_success() {
     let crop = Symbol::new(&env, "coffee");
     let region = Symbol::new(&env, "highlands");
 
+    client.register_campaign(
+        &campaign_id,
+        &user,
+        &String::from_str(&env, "Coffee Farm"),
+        &String::from_str(&env, "Premium coffee"),
+    );
     client.link_campaign_escrow(&campaign_id, &user, &escrow, &crop, &region);
 
-    let record = client.get_campaign_record(&campaign_id);
+    let record = client.get_campaign_record(&campaign_id).unwrap();
     assert_eq!(record.campaign_id, campaign_id);
     assert_eq!(record.farmer, user);
     assert_eq!(record.escrow_contract, escrow);
@@ -682,17 +690,58 @@ fn test_link_campaign_escrow_duplicate_fails() {
     let crop = Symbol::new(&env, "coffee");
     let region = Symbol::new(&env, "highlands");
 
+    client.register_campaign(
+        &campaign_id,
+        &user,
+        &String::from_str(&env, "Coffee Farm"),
+        &String::from_str(&env, "Premium coffee"),
+    );
     client.link_campaign_escrow(&campaign_id, &user, &escrow, &crop, &region);
     client.link_campaign_escrow(&campaign_id, &user, &escrow, &crop, &region);
 }
 
 #[test]
-#[should_panic(expected = "campaign not found")]
-fn test_get_campaign_record_nonexistent_fails() {
+#[should_panic(expected = "campaign not registered")]
+fn test_link_campaign_escrow_before_register_fails() {
+    let (env, admin, user, escrow, client) = create_test_env();
+    client.initialize(&admin);
+
+    let campaign_id = 1u64;
+    let crop = Symbol::new(&env, "coffee");
+    let region = Symbol::new(&env, "highlands");
+
+    // Never registered via register_campaign.
+    client.link_campaign_escrow(&campaign_id, &user, &escrow, &crop, &region);
+}
+
+#[test]
+#[should_panic(expected = "farmer does not match registered campaign")]
+fn test_link_campaign_escrow_farmer_mismatch_fails() {
+    let (env, admin, user, escrow, client) = create_test_env();
+    client.initialize(&admin);
+
+    let campaign_id = 1u64;
+    let crop = Symbol::new(&env, "coffee");
+    let region = Symbol::new(&env, "highlands");
+    let other_farmer = Address::generate(&env);
+
+    client.register_campaign(
+        &campaign_id,
+        &user,
+        &String::from_str(&env, "Coffee Farm"),
+        &String::from_str(&env, "Premium coffee"),
+    );
+    // Different farmer than the one that registered the campaign.
+    client.link_campaign_escrow(&campaign_id, &other_farmer, &escrow, &crop, &region);
+}
+
+#[test]
+fn test_get_campaign_record_nonexistent_returns_none() {
     let (_env, admin, _, _, client) = create_test_env();
     client.initialize(&admin);
 
-    client.get_campaign_record(&999u64);
+    let record = client.get_campaign_record(&999u64);
+    assert!(record.is_none());
 }
 
 #[test]
@@ -703,11 +752,17 @@ fn test_update_campaign_status_as_escrow_contract() {
     let campaign_id = 1u64;
     let crop = Symbol::new(&env, "coffee");
     let region = Symbol::new(&env, "highlands");
+    client.register_campaign(
+        &campaign_id,
+        &user,
+        &String::from_str(&env, "Coffee Farm"),
+        &String::from_str(&env, "Premium coffee"),
+    );
     client.link_campaign_escrow(&campaign_id, &user, &escrow, &crop, &region);
 
     client.update_campaign_status(&campaign_id, &escrow, &CampaignStatus::Funding);
 
-    let record = client.get_campaign_record(&campaign_id);
+    let record = client.get_campaign_record(&campaign_id).unwrap();
     assert_eq!(record.status, CampaignStatus::Funding);
 
     let event = env.events().all().last().unwrap();
@@ -725,12 +780,62 @@ fn test_update_campaign_status_as_admin() {
     let campaign_id = 1u64;
     let crop = Symbol::new(&env, "coffee");
     let region = Symbol::new(&env, "highlands");
+    client.register_campaign(
+        &campaign_id,
+        &user,
+        &String::from_str(&env, "Coffee Farm"),
+        &String::from_str(&env, "Premium coffee"),
+    );
     client.link_campaign_escrow(&campaign_id, &user, &escrow, &crop, &region);
 
     client.update_campaign_status(&campaign_id, &admin, &CampaignStatus::Settled);
 
-    let record = client.get_campaign_record(&campaign_id);
+    let record = client.get_campaign_record(&campaign_id).unwrap();
     assert_eq!(record.status, CampaignStatus::Settled);
+}
+
+#[test]
+fn test_update_campaign_status_harvested() {
+    let (env, admin, user, escrow, client) = create_test_env();
+    client.initialize(&admin);
+
+    let campaign_id = 1u64;
+    let crop = Symbol::new(&env, "coffee");
+    let region = Symbol::new(&env, "highlands");
+    client.register_campaign(
+        &campaign_id,
+        &user,
+        &String::from_str(&env, "Coffee Farm"),
+        &String::from_str(&env, "Premium coffee"),
+    );
+    client.link_campaign_escrow(&campaign_id, &user, &escrow, &crop, &region);
+
+    client.update_campaign_status(&campaign_id, &escrow, &CampaignStatus::Harvested);
+
+    let record = client.get_campaign_record(&campaign_id).unwrap();
+    assert_eq!(record.status, CampaignStatus::Harvested);
+}
+
+#[test]
+fn test_update_campaign_status_failed() {
+    let (env, admin, user, escrow, client) = create_test_env();
+    client.initialize(&admin);
+
+    let campaign_id = 1u64;
+    let crop = Symbol::new(&env, "coffee");
+    let region = Symbol::new(&env, "highlands");
+    client.register_campaign(
+        &campaign_id,
+        &user,
+        &String::from_str(&env, "Coffee Farm"),
+        &String::from_str(&env, "Premium coffee"),
+    );
+    client.link_campaign_escrow(&campaign_id, &user, &escrow, &crop, &region);
+
+    client.update_campaign_status(&campaign_id, &escrow, &CampaignStatus::Failed);
+
+    let record = client.get_campaign_record(&campaign_id).unwrap();
+    assert_eq!(record.status, CampaignStatus::Failed);
 }
 
 #[test]
@@ -742,6 +847,12 @@ fn test_update_campaign_status_unauthorized_caller_fails() {
     let campaign_id = 1u64;
     let crop = Symbol::new(&env, "coffee");
     let region = Symbol::new(&env, "highlands");
+    client.register_campaign(
+        &campaign_id,
+        &user,
+        &String::from_str(&env, "Coffee Farm"),
+        &String::from_str(&env, "Premium coffee"),
+    );
     client.link_campaign_escrow(&campaign_id, &user, &escrow, &crop, &region);
 
     let random = Address::generate(&env);
@@ -757,6 +868,18 @@ fn test_get_campaigns_by_farmer() {
     let crop = Symbol::new(&env, "coffee");
     let region = Symbol::new(&env, "highlands");
 
+    client.register_campaign(
+        &1u64,
+        &user,
+        &String::from_str(&env, "Coffee Farm"),
+        &String::from_str(&env, "Premium coffee"),
+    );
+    client.register_campaign(
+        &2u64,
+        &user,
+        &String::from_str(&env, "Cocoa Farm"),
+        &String::from_str(&env, "Premium cocoa"),
+    );
     client.link_campaign_escrow(&1u64, &user, &escrow, &crop, &region);
     client.link_campaign_escrow(&2u64, &user, &escrow_2, &crop, &region);
 
@@ -775,209 +898,98 @@ fn test_get_campaigns_by_farmer_empty() {
     assert_eq!(campaigns.len(), 0);
 }
 
-// ---------------------------------------------------------------------------
-// Enumeration: counts and paginated listing (issue #151)
-// ---------------------------------------------------------------------------
+// Paginated list storage tests (Issue #157: bounded ledger entries)
 
 #[test]
-fn test_counts_start_at_zero() {
-    let (_env, admin, _, _, client) = create_test_env();
-    client.initialize(&admin);
-
-    assert_eq!(client.get_campaign_count(), 0u64);
-    assert_eq!(client.get_farmer_count(), 0u64);
-}
-
-#[test]
-fn test_campaign_count_after_multiple_registrations() {
-    let (env, admin, user, _, client) = create_test_env();
-    client.initialize(&admin);
-
-    for id in 1u64..=5u64 {
-        client.register_campaign(
-            &id,
-            &user,
-            &String::from_str(&env, "Title"),
-            &String::from_str(&env, "Description"),
-        );
-    }
-
-    assert_eq!(client.get_campaign_count(), 5u64);
-}
-
-#[test]
-fn test_farmer_count_after_multiple_registrations() {
+fn test_activities_paginate_across_multiple_pages() {
     let (env, admin, _, _, client) = create_test_env();
+    // Writing several hundred records in one test exceeds the default mock
+    // budget; each write is a separate transaction in production.
+    env.budget().reset_unlimited();
     client.initialize(&admin);
 
-    for _ in 0..3 {
-        let farmer = Address::generate(&env);
-        client.register_farmer(
-            &farmer,
-            &String::from_str(&env, "Name"),
-            &String::from_str(&env, "Location"),
+    let campaign_id = 1u64;
+    let max_per_page = crate::storage::MAX_ACTIVITIES_PER_PAGE;
+    // Enough entries to fill two full pages plus a partial third.
+    let total = max_per_page * 2 + 25;
+
+    let actions = [
+        ActivityAction::CampaignCreated,
+        ActivityAction::FarmerRegistered,
+        ActivityAction::CampaignRegistered,
+        ActivityAction::CampaignFunded,
+        ActivityAction::CampaignStatusChanged,
+        ActivityAction::FundsReleased,
+        ActivityAction::HarvestReported,
+        ActivityAction::DisputeInitiated,
+        ActivityAction::DisputeResolved,
+        ActivityAction::CampaignSettled,
+    ];
+
+    for i in 0..total {
+        client.record_activity(
+            &campaign_id,
+            &admin,
+            &actions[(i % actions.len() as u32) as usize],
         );
     }
 
-    assert_eq!(client.get_farmer_count(), 3u64);
-}
+    // A fresh page is opened every time the previous one fills up.
+    let page_count = client.get_campaign_activity_page_count(&campaign_id);
+    assert_eq!(page_count, total / max_per_page + 1);
 
-#[test]
-fn test_get_campaign_ids_returns_registration_order() {
-    let (env, admin, user, _, client) = create_test_env();
-    client.initialize(&admin);
+    // Every page but the last is full; the last page holds the remainder.
+    let first_page = client.get_campaign_activities_page(&campaign_id, &0u32);
+    assert_eq!(first_page.len(), max_per_page);
+    let last_page = client.get_campaign_activities_page(&campaign_id, &(page_count - 1));
+    assert_eq!(last_page.len(), total % max_per_page);
 
-    for id in [10u64, 20u64, 30u64] {
-        client.register_campaign(
-            &id,
-            &user,
-            &String::from_str(&env, "Title"),
-            &String::from_str(&env, "Description"),
-        );
-    }
-
-    let ids = client.get_campaign_ids(&0u64, &10u32);
-    assert_eq!(ids.len(), 3);
-    assert_eq!(ids.get(0).unwrap(), 10u64);
-    assert_eq!(ids.get(1).unwrap(), 20u64);
-    assert_eq!(ids.get(2).unwrap(), 30u64);
-}
-
-#[test]
-fn test_get_campaign_ids_pagination_covers_every_id_exactly_once() {
-    let (env, admin, user, _, client) = create_test_env();
-    client.initialize(&admin);
-
-    for id in 1u64..=7u64 {
-        client.register_campaign(
-            &id,
-            &user,
-            &String::from_str(&env, "Title"),
-            &String::from_str(&env, "Description"),
-        );
-    }
-
-    let page_1 = client.get_campaign_ids(&0u64, &3u32);
-    let page_2 = client.get_campaign_ids(&3u64, &3u32);
-    let page_3 = client.get_campaign_ids(&6u64, &3u32);
-
-    assert_eq!(page_1.len(), 3);
-    assert_eq!(page_2.len(), 3);
-    // Final page is short — only one id remains.
-    assert_eq!(page_3.len(), 1);
-
-    let mut seen = vec![&env];
-    for page in [page_1, page_2, page_3] {
-        for id in page.iter() {
-            seen.push_back(id);
-        }
-    }
-    assert_eq!(seen.len(), 7);
-    for id in 1u64..=7u64 {
-        assert!(seen.contains(&id));
+    // Reading everything still returns all records, in insertion order.
+    let activities = client.get_campaign_activities(&campaign_id);
+    assert_eq!(activities.len(), total);
+    for i in 0..total {
+        let expected = actions[(i % actions.len() as u32) as usize].clone();
+        assert_eq!(activities.get(i).unwrap().action_type, expected);
     }
 }
 
 #[test]
-fn test_get_campaign_ids_offset_past_end_is_empty() {
-    let (env, admin, user, _, client) = create_test_env();
-    client.initialize(&admin);
-
-    client.register_campaign(
-        &1u64,
-        &user,
-        &String::from_str(&env, "Title"),
-        &String::from_str(&env, "Description"),
-    );
-
-    assert_eq!(client.get_campaign_ids(&5u64, &10u32).len(), 0);
-    assert_eq!(client.get_campaign_ids(&1u64, &10u32).len(), 0);
-}
-
-#[test]
-fn test_get_campaign_ids_limit_is_clamped() {
-    let (env, admin, user, _, client) = create_test_env();
-    client.initialize(&admin);
-
-    for id in 1u64..=3u64 {
-        client.register_campaign(
-            &id,
-            &user,
-            &String::from_str(&env, "Title"),
-            &String::from_str(&env, "Description"),
-        );
-    }
-
-    // A limit far above MAX_PAGE_LIMIT still returns only what exists.
-    let ids = client.get_campaign_ids(&0u64, &10_000u32);
-    assert_eq!(ids.len(), 3);
-}
-
-#[test]
-fn test_get_campaign_ids_empty_registry() {
-    let (_env, admin, _, _, client) = create_test_env();
-    client.initialize(&admin);
-
-    assert_eq!(client.get_campaign_ids(&0u64, &10u32).len(), 0);
-}
-
-#[test]
-fn test_link_campaign_escrow_indexes_campaign() {
+fn test_farmer_campaigns_paginate_across_multiple_pages() {
     let (env, admin, user, escrow, client) = create_test_env();
+    // Linking hundreds of campaigns in one test exceeds the default mock
+    // budget; each link is a separate transaction in production.
+    env.budget().reset_unlimited();
     client.initialize(&admin);
 
-    // A campaign that was never passed to register_campaign is still
-    // enumerable once it is linked.
     let crop = Symbol::new(&env, "coffee");
     let region = Symbol::new(&env, "highlands");
-    client.link_campaign_escrow(&42u64, &user, &escrow, &crop, &region);
 
-    assert_eq!(client.get_campaign_count(), 1u64);
-    let ids = client.get_campaign_ids(&0u64, &10u32);
-    assert_eq!(ids.get(0).unwrap(), 42u64);
-}
+    let max_per_page = crate::storage::MAX_FARMER_CAMPAIGNS_PER_PAGE;
+    // Enough campaign links to span three pages.
+    let total = max_per_page * 2 + 25;
 
-#[test]
-fn test_register_then_link_counts_campaign_once() {
-    let (env, admin, user, escrow, client) = create_test_env();
-    client.initialize(&admin);
-
-    client.register_campaign(
-        &7u64,
-        &user,
-        &String::from_str(&env, "Title"),
-        &String::from_str(&env, "Description"),
-    );
-    let crop = Symbol::new(&env, "coffee");
-    let region = Symbol::new(&env, "highlands");
-    client.link_campaign_escrow(&7u64, &user, &escrow, &crop, &region);
-
-    assert_eq!(client.get_campaign_count(), 1u64);
-    assert_eq!(client.get_campaign_ids(&0u64, &10u32).len(), 1);
-}
-
-#[test]
-fn test_get_farmers_pagination() {
-    let (env, admin, _, _, client) = create_test_env();
-    client.initialize(&admin);
-
-    let mut registered = vec![&env];
-    for _ in 0..4 {
-        let farmer = Address::generate(&env);
-        client.register_farmer(
-            &farmer,
-            &String::from_str(&env, "Name"),
-            &String::from_str(&env, "Location"),
+    for i in 0..total {
+        client.register_campaign(
+            &(i as u64),
+            &user,
+            &String::from_str(&env, "Coffee Farm"),
+            &String::from_str(&env, "Premium coffee"),
         );
-        registered.push_back(farmer);
+        client.link_campaign_escrow(&(i as u64), &user, &escrow, &crop, &region);
     }
 
-    let page_1 = client.get_farmers(&0u64, &2u32);
-    let page_2 = client.get_farmers(&2u64, &2u32);
-    assert_eq!(page_1.len(), 2);
-    assert_eq!(page_2.len(), 2);
+    let page_count = client.get_farmer_campaigns_page_count(&user);
+    assert_eq!(page_count, total / max_per_page + 1);
 
-    assert_eq!(page_1.get(0).unwrap(), registered.get(0).unwrap());
-    assert_eq!(page_2.get(1).unwrap(), registered.get(3).unwrap());
-    assert_eq!(client.get_farmers(&4u64, &2u32).len(), 0);
+    let first_page = client.get_campaigns_by_farmer_page(&user, &0u32);
+    assert_eq!(first_page.len(), max_per_page);
+    let last_page = client.get_campaigns_by_farmer_page(&user, &(page_count - 1));
+    assert_eq!(last_page.len(), total % max_per_page);
+
+    // Reading everything still returns all campaign ids, in link order.
+    let campaigns = client.get_campaigns_by_farmer(&user);
+    assert_eq!(campaigns.len(), total);
+    for i in 0..total {
+        assert_eq!(campaigns.get(i).unwrap(), i as u64);
+    }
 }

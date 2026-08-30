@@ -9,17 +9,19 @@ The `ProductionEscrowContract` manages the lifecycle of agricultural production 
 ### Campaign Lifecycle
 
 ```
-Funding -> Funded -> InProduction -> Harvested -> Settled
+Active -> Funding -> Funded -> InProduction -> Harvested -> Settled
 ```
 
 Alternative terminal states:
 - `Failed`
 - `Disputed`
+- `Resolved`
 
 ### Campaign Statuses
 
 | Status        | Description                                      |
 |---------------|--------------------------------------------------|
+| `Active`      | Campaign created, no contributions yet           |
 | `Funding`     | Campaign created, accepting investor funds       |
 | `Funded`      | Minimum funding goal reached                     |
 | `InProduction`| Production phase started                         |
@@ -27,6 +29,38 @@ Alternative terminal states:
 | `Settled`     | Funds distributed according to campaign rules    |
 | `Failed`      | Campaign failed, refunds processed               |
 | `Disputed`    | Dispute initiated, awaiting resolution           |
+| `Resolved`    | Dispute resolved, funds allocated                |
+
+### Deadline enforcement
+
+Every campaign carries a `deadline: u64` (a Unix timestamp) recording the
+closing time for contributions. It is enforced on-chain at three points:
+
+1. **Creation.** `create_campaign` rejects a `deadline` that is not strictly in
+   the future (`deadline <= now` panics with `"deadline must be in the future"`).
+   This mirrors the existing `target_amount` validation, so a campaign can never
+   be born already-expired.
+2. **Contribution window.** `fund_campaign` and `receive_contribution` reject
+   any contribution once `now > deadline` (`"campaign deadline has passed"`).
+   Because a campaign that reaches its target transitions to `Funded` (which is
+   not contribution-eligible) as soon as the target is hit, this only ever
+   blocks contributions to campaigns that *failed to reach their target* in
+   time. It does **not** auto-transition the campaign: funds are not touched.
+3. **Permissionless expiry.** `expire_campaign(campaign_id)` is callable by
+   anyone once `now > deadline` on a campaign still in `Active`/`Funding` (i.e.
+   its target was not met). It sets the escrowed balance to `refundable` and
+   transitions the campaign to `Failed`, after which investors can call
+   `claim_refund`. This is the on-chain counterpart to a `mark_failed` an admin
+   could otherwise perform, and makes the deadline actionable without admin
+   involvement.
+
+If a campaign meets its target after the deadline (e.g. via a reconciliation
+path), it is excluded from expiry by the `Active`/`Funding` status gate; an
+admin can still `mark_failed` it explicitly if needed.
+
+The farmer's stated "production timeline" is therefore the contribution
+deadline: funding closes at `deadline`, and expiring unmet campaigns requires
+no privileged signer.
 
 ## Public Methods
 
@@ -34,7 +68,9 @@ Alternative terminal states:
 |---------------------|-------------------------------------------------|
 | `initialize`        | Initialize contract state                       |
 | `create_campaign`   | Create a new campaign (farmer auth required)    |
-| `fund_campaign`     | Fund a campaign (investor auth required; real token transfer) |
+| `fund_campaign`     | Fund a campaign (investor auth required; real token transfer; rejected once the `deadline` has passed) |
+| `expire_campaign`   | Permissionless: expire an under-funded campaign whose `deadline` has passed, transitioning it to `Failed` |
+| `receive_contribution` | Admin reconciliation of an off-chain-verified contribution (admin **and** farmer auth required; no token transfer — see "Trust model" below; also rejected once the `deadline` has passed) |
 | `receive_contribution` | Admin reconciliation of an off-chain-verified contribution (admin **and** farmer auth required; no token transfer — see "Trust model" below) |
 | `configure_tranches`| Configure tranches (admin auth required)        |
 | `release_tranche`   | Release next tranche (admin auth required; transitions campaign to `InProduction` on first call) |
@@ -42,6 +78,7 @@ Alternative terminal states:
 | `settle_campaign`   | Settle campaign and distribute funds            |
 | `mark_failed`       | Mark campaign as failed, trigger refunds        |
 | `open_dispute`      | Enter dispute state                             |
+| `touch_campaign`    | Permissionless keep-alive: extends TTL of a campaign's persistent storage entries without changing state (see "Storage expiry & keep-alives") |
 | `get_campaign`      | Retrieve campaign details                       |
 
 ## Trust model: `receive_contribution`

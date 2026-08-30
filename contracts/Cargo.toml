@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+    "escrow_types",
     "registry",
     "production_escrow",
     "integration_tests",
