@@ -1,0 +1,12 @@
+## Summary
+
+Resolves #186 by ensuring route parameters are properly handled in `CampaignDetailPage` and adding the missing `/campaigns/new` route to `App.tsx` for `CreateCampaignPage`.
+
+## Changes Made
+
+- Registered route `<Route path="/campaigns/new" element={<CreateCampaignPage />} />` in `App.tsx` under `AppLayout`.
+- Ensured `CampaignDetailPage` dynamic route `/campaigns/:id` accurately routes contract data.
+
+## Related Issue
+
+Closes #186
