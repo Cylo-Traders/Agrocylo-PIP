@@ -39,7 +39,7 @@ function mockQuery(partial: Record<string, unknown>) {
     isError: false,
     refetch: vi.fn(),
     ...partial,
-  } as ReturnType<typeof useAllCampaigns>);
+  } as unknown as ReturnType<typeof useAllCampaigns>);
 }
 
 function renderPage() {

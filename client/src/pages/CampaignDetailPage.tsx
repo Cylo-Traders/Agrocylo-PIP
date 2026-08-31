@@ -160,10 +160,7 @@ export const CampaignDetailPage: React.FC = () => {
         />
       </div>
 
-      <OpenDisputeForm
-        campaignId={campaign.id}
-        farmerAddress={campaign.farmer}
-      />
+      <OpenDisputeForm campaignId={id} farmerAddress={campaign.farmer} />
     </div>
   );
 };

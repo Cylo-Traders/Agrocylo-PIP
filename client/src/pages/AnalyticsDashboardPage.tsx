@@ -103,6 +103,33 @@ export function AnalyticsDashboardPage() {
 
       {analytics.status === 'ready' && (
         <>
+          <div
+            role="region"
+            aria-label="Analytics lookback notice"
+            className="mb-6 rounded-campaign border border-soil-200 bg-soil-50/70 p-4 sm:p-5"
+          >
+            <div className="flex items-center gap-2">
+              <span
+                className="inline-block h-2.5 w-2.5 rounded-full bg-leaf-600"
+                aria-hidden="true"
+              />
+              <h2 className="text-body-sm font-semibold text-soil-900">
+                Lookback Window Active (
+                {analytics.lookbackLedgers?.toLocaleString() ?? '120,000'}{' '}
+                ledgers)
+              </h2>
+            </div>
+            <p className="mt-1 text-caption text-soil-600">
+              Analytics metrics and volume charts are aggregated from events
+              within the trailing lookback window (~
+              {Math.round(
+                ((analytics.lookbackLedgers ?? 120_000) * 5) / 86400,
+              )}{' '}
+              days). Historical campaigns created prior to this window are not
+              included in client-side aggregations.
+            </p>
+          </div>
+
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
             <StatTile
               label="Campaigns tracked"

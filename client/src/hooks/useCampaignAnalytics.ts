@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react';
-import { loadRecentEscrowEvents } from '../lib/soroban/events';
+import {
+  loadRecentEscrowEvents,
+  DEFAULT_LOOKBACK_LEDGERS,
+} from '../lib/soroban/events';
 import {
   computeAnalyticsMetrics,
   type AnalyticsMetrics,
@@ -8,20 +11,29 @@ import {
 const RPC_URL = import.meta.env.VITE_SOROBAN_RPC_URL || undefined;
 const CONTRACT_ID =
   import.meta.env.VITE_PRODUCTION_ESCROW_CONTRACT_ID || undefined;
-const DEFAULT_LOOKBACK_LEDGERS = 120_000;
 
-const LOOKBACK_LEDGERS = (() => {
+export const LOOKBACK_LEDGERS = (() => {
   const parsed = Number(import.meta.env.VITE_SOROBAN_EVENTS_LOOKBACK_LEDGERS);
   return Number.isFinite(parsed) && parsed > 0
     ? parsed
     : DEFAULT_LOOKBACK_LEDGERS;
 })();
 
+export { DEFAULT_LOOKBACK_LEDGERS };
+
 export type AnalyticsState =
   | { status: 'not-configured' }
   | { status: 'loading' }
   | { status: 'error'; message: string }
-  | { status: 'ready'; metrics: AnalyticsMetrics };
+  | {
+      status: 'ready';
+      metrics: AnalyticsMetrics;
+      lookbackLedgers: number;
+    };
+
+export interface UseCampaignAnalyticsOptions {
+  lookbackLedgers?: number;
+}
 
 /**
  * Loads ProductionEscrowContract events directly from Soroban RPC and derives
@@ -29,7 +41,11 @@ export type AnalyticsState =
  * VITE_PRODUCTION_ESCROW_CONTRACT_ID to be configured (see client/.env.example);
  * without them this resolves to `not-configured` rather than failing.
  */
-export function useCampaignAnalytics(): AnalyticsState {
+export function useCampaignAnalytics(
+  options?: UseCampaignAnalyticsOptions,
+): AnalyticsState {
+  const lookback = options?.lookbackLedgers ?? LOOKBACK_LEDGERS;
+
   const [state, setState] = useState<AnalyticsState>(
     RPC_URL && CONTRACT_ID
       ? { status: 'loading' }
@@ -45,10 +61,14 @@ export function useCampaignAnalytics(): AnalyticsState {
         const events = await loadRecentEscrowEvents({
           rpcUrl: RPC_URL!,
           contractId: CONTRACT_ID!,
-          lookbackLedgers: LOOKBACK_LEDGERS,
+          lookbackLedgers: lookback,
         });
         if (cancelled) return;
-        setState({ status: 'ready', metrics: computeAnalyticsMetrics(events) });
+        setState({
+          status: 'ready',
+          metrics: computeAnalyticsMetrics(events),
+          lookbackLedgers: lookback,
+        });
       } catch (error) {
         if (cancelled) return;
         setState({
@@ -65,7 +85,7 @@ export function useCampaignAnalytics(): AnalyticsState {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [lookback]);
 
   return state;
 }

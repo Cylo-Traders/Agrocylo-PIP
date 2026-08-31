@@ -1,5 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
-import { loadRecentEscrowEvents } from '../lib/soroban/events';
+import {
+  loadRecentEscrowEvents,
+  DEFAULT_LOOKBACK_LEDGERS,
+} from '../lib/soroban/events';
 import { contractMethod, getEscrowClient } from '../lib/soroban/contractClient';
 import {
   ESCROW_CONTRACT_ID,
@@ -7,20 +10,27 @@ import {
   isEscrowConfigured,
 } from '../lib/soroban/config';
 import { contractQueryKeys } from './contract/queryKeys';
+import { isBackendApiEnabled } from '../lib/api/config';
+import { getCampaigns } from '../lib/api/client';
 import type { Campaign } from '../lib/soroban/types';
 
-const DEFAULT_LOOKBACK_LEDGERS = 120_000;
-
-const LOOKBACK_LEDGERS = (() => {
+export const LOOKBACK_LEDGERS = (() => {
   const parsed = Number(import.meta.env.VITE_SOROBAN_EVENTS_LOOKBACK_LEDGERS);
   return Number.isFinite(parsed) && parsed > 0
     ? parsed
     : DEFAULT_LOOKBACK_LEDGERS;
 })();
 
+export { DEFAULT_LOOKBACK_LEDGERS };
+
 export interface CampaignOverview {
   id: string;
   campaign: Campaign;
+}
+
+export interface UseAllCampaignsOptions {
+  lookbackLedgers?: number;
+  useBackendFallback?: boolean;
 }
 
 /**
@@ -31,20 +41,36 @@ export interface CampaignOverview {
  * no status filter — this backs the public `/campaigns` marketplace list, so
  * investors see campaigns in every lifecycle stage, newest id first.
  */
-export function useAllCampaigns() {
+export function useAllCampaigns(options?: UseAllCampaignsOptions) {
+  const lookback = options?.lookbackLedgers ?? LOOKBACK_LEDGERS;
+  const useBackend = options?.useBackendFallback ?? isBackendApiEnabled();
+
   return useQuery({
-    queryKey: contractQueryKeys.allCampaigns(),
+    queryKey: [...contractQueryKeys.allCampaigns(), lookback, useBackend],
     enabled: isEscrowConfigured(),
     queryFn: async (): Promise<CampaignOverview[]> => {
       const events = await loadRecentEscrowEvents({
         rpcUrl: RPC_URL!,
         contractId: ESCROW_CONTRACT_ID!,
-        lookbackLedgers: LOOKBACK_LEDGERS,
+        lookbackLedgers: lookback,
       });
 
-      const campaignIds = Array.from(
-        new Set(events.map((event) => event.campaignId).filter(Boolean)),
+      const discoveredIds = new Set(
+        events.map((event) => event.campaignId).filter(Boolean),
       );
+
+      if (useBackend) {
+        try {
+          const backendCampaigns = await getCampaigns();
+          for (const c of backendCampaigns) {
+            if (c.id) discoveredIds.add(c.id);
+          }
+        } catch {
+          // Backend discovery fallback is best effort
+        }
+      }
+
+      const campaignIds = Array.from(discoveredIds);
 
       const client = await getEscrowClient();
       const overviews = await Promise.all(

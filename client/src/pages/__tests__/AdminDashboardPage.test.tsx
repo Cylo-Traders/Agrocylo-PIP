@@ -27,6 +27,8 @@ vi.mock('../../hooks/contract', () => ({
 const mockUseAdminCampaigns = vi.fn();
 vi.mock('../../hooks/useAdminCampaigns', () => ({
   useAdminCampaigns: () => mockUseAdminCampaigns(),
+  LOOKBACK_LEDGERS: 120_000,
+  DEFAULT_LOOKBACK_LEDGERS: 120_000,
 }));
 
 vi.mock('../../lib/soroban/config', () => ({
@@ -117,6 +119,28 @@ describe('AdminDashboardPage admin gating', () => {
     ).toBeInTheDocument();
     expect(
       screen.getByRole('button', { name: /mark campaign as failed/i }),
+    ).toBeInTheDocument();
+  });
+
+  it('renders the lookback window notice and load older history pagination button for admin', () => {
+    mockWallet(ADMIN_ADDRESS);
+
+    render(
+      <MemoryRouter>
+        <AdminDashboardPage />
+      </MemoryRouter>,
+    );
+
+    expect(
+      screen.getByRole('region', {
+        name: /campaign discovery lookback notice/i,
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/campaign discovery: lookback window active/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /load older history/i }),
     ).toBeInTheDocument();
   });
 });
