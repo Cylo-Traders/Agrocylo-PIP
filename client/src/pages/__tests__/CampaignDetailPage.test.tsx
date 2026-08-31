@@ -5,6 +5,31 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { CampaignDetailPage } from '../CampaignDetailPage';
 import * as useEscrowQueries from '../../hooks/contract/useEscrowQueries';
 
+vi.mock('../../context/WalletContext', () => ({
+  useWallet: () => ({
+    publicKey: 'GUSER123',
+    isConnected: true,
+    isConnecting: false,
+    error: null,
+    connect: vi.fn(),
+    disconnect: vi.fn(),
+    clearError: vi.fn(),
+    signTransaction: vi.fn(),
+  }),
+  truncateAddress: (addr: string) => addr,
+}));
+
+vi.mock('../../context/ToastContext', () => ({
+  useToast: () => ({
+    push: vi.fn(),
+    success: vi.fn(),
+    error: vi.fn(),
+    dismiss: vi.fn(),
+    clear: vi.fn(),
+  }),
+  ToastProvider: ({ children }: { children: React.ReactNode }) => children,
+}));
+
 vi.mock('../../hooks/contract/useEscrowQueries', () => ({
   useCampaign: vi.fn(),
 }));
@@ -24,6 +49,12 @@ vi.mock('../../components/campaign/ActivityFeed', () => ({
 vi.mock('../../components/campaign/FundCampaignModal', () => ({
   FundCampaignModal: () => (
     <div data-testid="fund-modal">Fund Modal Component</div>
+  ),
+}));
+
+vi.mock('../../components/campaign/OpenDisputeForm', () => ({
+  OpenDisputeForm: () => (
+    <div data-testid="open-dispute-form">Dispute Form Component</div>
   ),
 }));
 

@@ -19,12 +19,15 @@ export interface FetchEscrowEventsOptions {
   rpcUrl: string;
   contractId: string;
   startLedger: number;
+  cursor?: string;
+  maxPages?: number;
 }
 
-const PAGE_LIMIT = 100;
+export const DEFAULT_LOOKBACK_LEDGERS = 120_000;
+export const PAGE_LIMIT = 100;
 // Hard cap on pages fetched per load so a misconfigured lookback window can't
 // turn into an unbounded number of RPC round-trips from the browser.
-const MAX_PAGES = 50;
+export const MAX_PAGES = 50;
 
 /**
  * Fetches and decodes every ProductionEscrowContract event from `startLedger`
@@ -35,12 +38,14 @@ export async function fetchEscrowEvents({
   rpcUrl,
   contractId,
   startLedger,
+  cursor: initialCursor,
+  maxPages = MAX_PAGES,
 }: FetchEscrowEventsOptions): Promise<EscrowEvent[]> {
   const server = new rpc.Server(rpcUrl);
   const events: EscrowEvent[] = [];
-  let cursor: string | undefined;
+  let cursor: string | undefined = initialCursor;
 
-  for (let page = 0; page < MAX_PAGES; page += 1) {
+  for (let page = 0; page < maxPages; page += 1) {
     const response = await server.getEvents({
       ...(cursor ? { cursor } : { startLedger }),
       filters: [{ type: 'contract', contractIds: [contractId] }],
@@ -72,6 +77,13 @@ export interface LoadEscrowEventsOptions {
   rpcUrl: string;
   contractId: string;
   lookbackLedgers: number;
+  startLedger?: number;
+}
+
+export interface ScannedLedgerWindow {
+  startLedger: number;
+  latestLedger: number;
+  lookbackLedgers: number;
 }
 
 /** Resolves the current ledger and fetches escrow events for the trailing `lookbackLedgers` window. */
@@ -79,9 +91,34 @@ export async function loadRecentEscrowEvents({
   rpcUrl,
   contractId,
   lookbackLedgers,
+  startLedger: explicitStartLedger,
 }: LoadEscrowEventsOptions): Promise<EscrowEvent[]> {
   const server = new rpc.Server(rpcUrl);
-  const latestLedger = await server.getLatestLedger();
-  const startLedger = Math.max(1, latestLedger.sequence - lookbackLedgers);
+  let startLedger = explicitStartLedger;
+  if (startLedger === undefined) {
+    const latestLedger = await server.getLatestLedger();
+    startLedger = Math.max(1, latestLedger.sequence - lookbackLedgers);
+  }
+  return fetchEscrowEvents({ rpcUrl, contractId, startLedger });
+}
+
+export interface LoadOlderEscrowEventsOptions {
+  rpcUrl: string;
+  contractId: string;
+  beforeLedger: number;
+  lookbackLedgers: number;
+}
+
+/**
+ * Fetches events in a preceding historical window before `beforeLedger`,
+ * allowing explicit pagination back through older chain history beyond the initial lookback window.
+ */
+export async function loadOlderEscrowEvents({
+  rpcUrl,
+  contractId,
+  beforeLedger,
+  lookbackLedgers,
+}: LoadOlderEscrowEventsOptions): Promise<EscrowEvent[]> {
+  const startLedger = Math.max(1, beforeLedger - lookbackLedgers);
   return fetchEscrowEvents({ rpcUrl, contractId, startLedger });
 }
