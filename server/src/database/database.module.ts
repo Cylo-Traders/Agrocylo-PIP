@@ -8,7 +8,15 @@ import { PrismaPg } from '@prisma/adapter-pg';
  * production, so a misconfigured deploy fails fast at startup instead of
  * silently running against a throwaway local file.
  */
-export function assertDatabaseUrlAllowed(url: string, nodeEnv: string): void {
+export function assertDatabaseUrlAllowed(
+  url: string | undefined,
+  nodeEnv: string,
+): void {
+  if (!url) {
+    throw new Error(
+      'DATABASE_URL is not configured or resolved to an empty value.',
+    );
+  }
   if (nodeEnv === 'production' && url.startsWith('file:')) {
     throw new Error(
       `DATABASE_URL resolves to a local file ("${url}"), which is not allowed when NODE_ENV=production. Set DATABASE_URL to a real database connection string.`,

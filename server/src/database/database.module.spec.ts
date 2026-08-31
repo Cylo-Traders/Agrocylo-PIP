@@ -1,7 +1,7 @@
 import { Test } from '@nestjs/testing';
 import { ConfigModule as NestConfigModule } from '@nestjs/config';
 import configuration from '../config/configuration';
-import { DatabaseModule } from './database.module';
+import { DatabaseModule, assertDatabaseUrlAllowed } from './database.module';
 import { PrismaClient } from '../../generated/prisma/client';
 
 /**
@@ -54,5 +54,40 @@ describe('DatabaseModule', () => {
     const client = moduleRef.get(PrismaClient);
     expect(typeof client.$disconnect).toBe('function');
     await moduleRef.close();
+  });
+
+  describe('assertDatabaseUrlAllowed', () => {
+    it('throws when URL is empty or undefined', () => {
+      expect(() => assertDatabaseUrlAllowed('', 'development')).toThrow(
+        /DATABASE_URL is not configured/,
+      );
+      expect(() => assertDatabaseUrlAllowed(undefined, 'development')).toThrow(
+        /DATABASE_URL is not configured/,
+      );
+    });
+
+    it('throws when URL is file: in production', () => {
+      expect(() =>
+        assertDatabaseUrlAllowed('file:./dev.db', 'production'),
+      ).toThrow(/not allowed when NODE_ENV=production/);
+    });
+
+    it('does not throw when URL is file: in development or test', () => {
+      expect(() =>
+        assertDatabaseUrlAllowed('file:./dev.db', 'development'),
+      ).not.toThrow();
+      expect(() =>
+        assertDatabaseUrlAllowed('file:./dev.db', 'test'),
+      ).not.toThrow();
+    });
+
+    it('does not throw for non-file database URL in production', () => {
+      expect(() =>
+        assertDatabaseUrlAllowed(
+          'postgresql://user:pass@localhost:5432/db',
+          'production',
+        ),
+      ).not.toThrow();
+    });
   });
 });
