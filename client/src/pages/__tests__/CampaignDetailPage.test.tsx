@@ -3,11 +3,20 @@ import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { CampaignDetailPage } from '../CampaignDetailPage';
+import { ToastProvider } from '../../context/ToastContext';
+import { WalletProvider } from '../../context/WalletContext';
 import * as useEscrowQueries from '../../hooks/contract/useEscrowQueries';
 
-vi.mock('../../hooks/contract/useEscrowQueries', () => ({
-  useCampaign: vi.fn(),
-}));
+vi.mock('../../hooks/contract/useEscrowQueries', async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import('../../hooks/contract/useEscrowQueries')
+    >();
+  return {
+    ...actual,
+    useCampaign: vi.fn(),
+  };
+});
 
 vi.mock('../../hooks/useCampaignLiveUpdates', () => ({
   useCampaignLiveUpdates: vi.fn(),
@@ -43,9 +52,13 @@ describe('CampaignDetailPage', () => {
     return render(
       <QueryClientProvider client={queryClient}>
         <MemoryRouter initialEntries={[`/campaigns/${campaignId}`]}>
-          <Routes>
-            <Route path="/campaigns/:id" element={<CampaignDetailPage />} />
-          </Routes>
+          <ToastProvider>
+            <WalletProvider>
+              <Routes>
+                <Route path="/campaigns/:id" element={<CampaignDetailPage />} />
+              </Routes>
+            </WalletProvider>
+          </ToastProvider>
         </MemoryRouter>
       </QueryClientProvider>,
     );

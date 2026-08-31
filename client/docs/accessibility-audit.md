@@ -128,10 +128,11 @@ changes were needed there.
 
 `src/__tests__/accessibility.test.tsx` adds:
 
-- 4 `jest-axe` scans (DOM/ARIA structural checks) across the audited routes
-  and the funding modal.
-- 4 keyboard-navigation tests for the funding flow (dialog focus, Tab trap,
-  Escape-to-close, error announcement).
+- 6 `jest-axe` scans (DOM/ARIA structural checks) across the audited routes,
+  the funding modal, `OpenDisputeForm`, and `CampaignAdminPanel` (in Disputed status).
+- 8 keyboard-navigation and screen-reader live-region tests for the funding flow
+  and dispute resolution flows (dialog focus, Tab trap, Escape-to-close,
+  `role="alert"` validation announcements, and `role="status"` success announcements).
 
 Run with `npm test` (Vitest). This gives the "no critical/serious
 violations" acceptance criterion a repeatable, CI-checkable guarantee for
@@ -139,14 +140,22 @@ these routes going forward, rather than a one-time manual claim.
 
 ## Explicit follow-up (not blocking this issue)
 
-**Dispute resolution has no UI yet.** A repo-wide search turned up
-`open_dispute`/`resolve_dispute` contract calls and an unused
-`useOpenDispute` hook, but no page or component renders a dispute-resolution
-flow anywhere in the client. There is nothing to keyboard-test because it
-doesn't exist yet — this acceptance criterion can only be verified once
-that flow is built (tracked separately; per issue #65's own guidance to
-"document any [issues] that need a follow-up rather than blocking this
-issue indefinitely").
+- ~~**Dispute resolution has no UI yet.** A repo-wide search turned up
+  `open_dispute`/`resolve_dispute` contract calls and an unused
+  `useOpenDispute` hook, but no page or component renders a dispute-resolution
+  flow anywhere in the client.~~
+  **Resolved (issue #189):** Dispute opening (`OpenDisputeForm.tsx`) and admin
+  dispute resolution (`CampaignAdminPanel.tsx`'s `ResolveDisputeForm`) have been
+  implemented, integrated into `CampaignDetailPage.tsx`, and fully audited:
+  - `OpenDisputeForm`: Input textarea features `<label htmlFor="dispute-reason">`,
+    `aria-invalid`, `aria-describedby="dispute-reason-error"`, `role="alert"`
+    error banner, and `role="status"` on success.
+  - `CampaignAdminPanel`: `ResolveDisputeForm` features `<label htmlFor="dispute-resolution">`,
+    `<label htmlFor="dispute-payout">`, accessible hints (`id="dispute-payout-hint"`),
+    `aria-invalid`, `aria-describedby="resolve-dispute-error dispute-payout-hint"`,
+    `role="alert"` error banner, and `role="status"` on success across all admin action forms.
+  - Automated `jest-axe` scans and keyboard/live-region announcement tests have been
+    added to `src/__tests__/accessibility.test.tsx`.
 
 Two smaller items are noted but intentionally not fixed here, to keep this
 PR scoped to accessibility/responsive behavior rather than expanding into
