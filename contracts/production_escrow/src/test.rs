@@ -1,6 +1,6 @@
 use super::*;
 use soroban_sdk::{
-    testutils::{Address as _, Events, Ledger},
+    testutils::{storage::Persistent, Address as _, Events, Ledger},
     token::{Client as TokenClient, StellarAssetClient},
     Address, Env, IntoVal, Symbol, Vec,
 };

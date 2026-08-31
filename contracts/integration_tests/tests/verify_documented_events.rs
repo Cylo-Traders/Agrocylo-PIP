@@ -17,8 +17,9 @@
 //!
 //! Covered registry events (from INTEGRATION.md §RegistryContract Events):
 //!   AdminInitialized, ContractApproved, ContractRevoked, AdminUpdated,
-//!   FarmerRegistered, CampaignRegistered, CampaignEscrowLinked,
-//!   CampaignStatusUpdated, ActivityRecorded
+//!   FarmerRegistered, FarmerProfileUpdated, CampaignRegistered,
+//!   CampaignMetadataUpdated, CampaignEscrowLinked, CampaignStatusUpdated,
+//!   ActivityRecorded
 
 use production_escrow::{
     DisputeResolution, ProductionEscrowContract, ProductionEscrowContractClient,
@@ -241,6 +242,14 @@ fn registry_events_all_documented_symbols_are_emitted() {
     );
     assert_event(&env, &registry_id, "FarmerRegistered");
 
+    // ── FarmerProfileUpdated ──────────────────────────────────────────────
+    registry.update_farmer_profile(
+        &farmer,
+        &soroban_sdk::String::from_str(&env, "Alice Updated"),
+        &soroban_sdk::String::from_str(&env, "Mombasa"),
+    );
+    assert_event(&env, &registry_id, "FarmerProfileUpdated");
+
     // ── CampaignRegistered ────────────────────────────────────────────────
     let campaign_id = 1u64;
     registry.register_campaign(
@@ -250,6 +259,15 @@ fn registry_events_all_documented_symbols_are_emitted() {
         &soroban_sdk::String::from_str(&env, "Seasonal crop"),
     );
     assert_event(&env, &registry_id, "CampaignRegistered");
+
+    // ── CampaignMetadataUpdated ───────────────────────────────────────────
+    registry.update_campaign_metadata(
+        &campaign_id,
+        &farmer,
+        &soroban_sdk::String::from_str(&env, "Maize 2026 Updated"),
+        &soroban_sdk::String::from_str(&env, "Seasonal crop updated description"),
+    );
+    assert_event(&env, &registry_id, "CampaignMetadataUpdated");
 
     // ── CampaignEscrowLinked ──────────────────────────────────────────────
     registry.link_campaign_escrow(

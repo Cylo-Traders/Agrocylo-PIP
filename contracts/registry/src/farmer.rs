@@ -23,6 +23,21 @@ pub fn register_farmer(env: &Env, farmer: Address, name: String, location: Strin
     events::farmer_registered(env, farmer, name);
 }
 
+pub fn update_farmer_profile(env: &Env, farmer: Address, name: String, location: String) {
+    farmer.require_auth();
+
+    let mut profile =
+        storage::get_farmer(env, &farmer).unwrap_or_else(|| panic!("farmer not registered"));
+
+    profile.name = name.clone();
+    profile.location = location;
+
+    storage::set_farmer(env, &profile);
+    storage::extend_instance_ttl(env);
+
+    events::farmer_profile_updated(env, farmer, name);
+}
+
 pub fn get_farmer(env: &Env, farmer: &Address) -> Option<FarmerProfile> {
     storage::get_farmer(env, farmer)
 }

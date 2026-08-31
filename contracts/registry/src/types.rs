@@ -94,4 +94,13 @@ pub enum DataKey {
     FarmerCampaignsPage(Address, u32),
     /// Number of non-empty campaign pages for `farmer`.
     FarmerCampaignsPageCount(Address),
+    /// Sequential index -> campaign id, populated alongside `CampaignCount`
+    /// so clients can page through `0..campaign_count`.
+    CampaignIndex(u64),
+    /// Marks a campaign id as already counted, so the two entry points that
+    /// can introduce a campaign (`register_campaign`, `link_campaign_escrow`)
+    /// never double-count the same id.
+    CampaignIndexed(u64),
+    /// Sequential index -> farmer address, populated alongside `FarmerCount`.
+    FarmerIndex(u64),
 }
