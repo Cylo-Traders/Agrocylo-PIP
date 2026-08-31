@@ -22,42 +22,38 @@ export const DisputeDetailsCard: React.FC<DisputeDetailsCardProps> = ({
 }) => (
   <section
     aria-labelledby="dispute-details-heading"
-    className="rounded-2xl border border-red-200 bg-red-50 p-6 dark:border-red-900 dark:bg-red-950/40"
+    className="rounded-campaign border border-status-disputed/30 bg-status-disputed-light p-6 shadow-campaign"
   >
     <div className="flex items-center justify-between">
       <h2
         id="dispute-details-heading"
-        className="text-lg font-semibold text-red-900 dark:text-red-200"
+        className="text-lg font-semibold text-status-disputed-dark"
       >
         Dispute {dispute.status === 'Open' ? 'open' : 'resolved'}
       </h2>
-      <span className="rounded-full bg-red-100 px-3 py-1 text-xs font-semibold text-red-800 dark:bg-red-900 dark:text-red-200">
+      <span className="rounded-full border border-status-disputed/30 bg-status-disputed-light px-3 py-1 text-xs font-semibold text-status-disputed-dark">
         {dispute.status}
       </span>
     </div>
 
     <dl className="mt-4 space-y-3 text-sm">
       <div>
-        <dt className="font-medium text-red-900 dark:text-red-200">Reason</dt>
-        <dd className="mt-1 whitespace-pre-wrap text-red-800 dark:text-red-300">
+        <dt className="font-medium text-status-disputed-dark">Reason</dt>
+        <dd className="mt-1 whitespace-pre-wrap text-status-disputed-dark">
           {dispute.reason}
         </dd>
       </div>
       <div className="flex flex-wrap gap-x-8 gap-y-2">
         <div>
-          <dt className="font-medium text-red-900 dark:text-red-200">
-            Opened by
-          </dt>
-          <dd className="mt-1 font-mono text-red-800 dark:text-red-300">
+          <dt className="font-medium text-status-disputed-dark">Opened by</dt>
+          <dd className="mt-1 font-mono text-status-disputed-dark">
             {truncateAddress(dispute.opener)}
           </dd>
         </div>
         {dispute.timestamp !== undefined && (
           <div>
-            <dt className="font-medium text-red-900 dark:text-red-200">
-              Opened at
-            </dt>
-            <dd className="mt-1 text-red-800 dark:text-red-300">
+            <dt className="font-medium text-status-disputed-dark">Opened at</dt>
+            <dd className="mt-1 text-status-disputed-dark">
               {new Date(dispute.timestamp * 1000).toLocaleString()}
             </dd>
           </div>
@@ -65,7 +61,7 @@ export const DisputeDetailsCard: React.FC<DisputeDetailsCardProps> = ({
       </div>
     </dl>
 
-    <p className="mt-4 border-t border-red-200 pt-3 text-xs text-red-700 dark:border-red-900 dark:text-red-400">
+    <p className="mt-4 border-t border-status-disputed/20 pt-3 text-xs text-status-disputed-dark">
       Fund release is paused until an admin resolves this dispute.
     </p>
   </section>
