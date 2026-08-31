@@ -32,6 +32,38 @@ pub fn register_campaign(
     events::campaign_registered(env, campaign_id, farmer, title);
 }
 
+pub fn update_campaign_metadata(
+    env: &Env,
+    campaign_id: u64,
+    farmer: Address,
+    title: String,
+    description: String,
+) {
+    farmer.require_auth();
+
+    let mut campaign = storage::get_campaign(env, campaign_id)
+        .unwrap_or_else(|| panic!("campaign not registered"));
+
+    if campaign.farmer != farmer {
+        panic!("farmer does not match registered campaign");
+    }
+
+    if let Some(record) = storage::get_campaign_record(env, campaign_id) {
+        match record.status {
+            CampaignStatus::Active | CampaignStatus::Funding => {}
+            _ => panic!("cannot update metadata: campaign has left active/funding status"),
+        }
+    }
+
+    campaign.title = title.clone();
+    campaign.description = description;
+
+    storage::set_campaign(env, &campaign);
+    storage::extend_instance_ttl(env);
+
+    events::campaign_metadata_updated(env, campaign_id, farmer, title);
+}
+
 pub fn get_campaign(env: &Env, campaign_id: u64) -> Option<CampaignInfo> {
     storage::get_campaign(env, campaign_id)
 }
@@ -186,4 +218,12 @@ pub fn get_campaigns_by_farmer_page_count(env: &Env, farmer: &Address) -> u32 {
 
 pub fn get_campaigns_by_farmer_page(env: &Env, farmer: &Address, page: u32) -> Vec<u64> {
     storage::get_farmer_campaigns_page(env, farmer, page)
+}
+
+pub fn get_campaign_count(env: &Env) -> u64 {
+    storage::get_campaign_count(env)
+}
+
+pub fn get_campaign_ids(env: &Env, offset: u64, limit: u32) -> Vec<u64> {
+    storage::get_campaign_ids(env, offset, limit)
 }
