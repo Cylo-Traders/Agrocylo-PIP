@@ -38,47 +38,61 @@ export interface SorobanConfig {
   indexerStartLedger?: number;
 }
 
+function validateDatabaseUrl(nodeEnv: string, databaseUrl: string | undefined): string {
+  const url = databaseUrl ?? 'file:./dev.db';
+  if (nodeEnv === 'production' && url.startsWith('file:')) {
+    throw new Error(
+      'DATABASE_URL cannot be a local SQLite file (file:...) in production. ' +
+        'Set a real database URI (e.g. postgresql://user:pass@host/db) before starting the app.',
+    );
+  }
+  return url;
+}
+
 export default (): {
   app: AppConfig;
   ws: WsConfig;
   db: DbConfig;
   soroban: SorobanConfig;
   throttle: ThrottleConfig;
-} => ({
-  app: {
-    nodeEnv: process.env.NODE_ENV ?? 'development',
-    port: parseInt(process.env.PORT ?? '3000', 10),
-    logLevel: process.env.LOG_LEVEL ?? 'info',
-    corsAllowedOrigins: (process.env.CORS_ALLOWED_ORIGINS ?? '')
-      .split(',')
-      .map((origin) => origin.trim())
-      .filter((origin) => origin.length > 0),
-  },
-  ws: {
-    authSecret: process.env.WS_AUTH_SECRET ?? '',
-  },
-  db: {
-    url: process.env.DATABASE_URL ?? 'file:./dev.db',
-  },
-  soroban: {
-    rpcUrl:
-      process.env.SOROBAN_RPC_URL ?? 'https://soroban-testnet.stellar.org',
-    networkPassphrase:
-      process.env.SOROBAN_NETWORK_PASSPHRASE ??
-      'Test SDF Network ; September 2015',
-    productionEscrowContractId: process.env.PRODUCTION_ESCROW_CONTRACT_ID ?? '',
-    escrowContractId: process.env.ESCROW_CONTRACT_ID ?? '',
-    eventPollIntervalMs: parseInt(
-      process.env.EVENT_POLL_INTERVAL_MS ?? '5000',
-      10,
-    ),
-    eventRetentionDays: parseInt(process.env.EVENT_RETENTION_DAYS ?? '7', 10),
-    indexerStartLedger: process.env.SOROBAN_INDEXER_START_LEDGER
-      ? parseInt(process.env.SOROBAN_INDEXER_START_LEDGER, 10)
-      : undefined,
-  },
-  throttle: {
-    ttlMs: parseInt(process.env.THROTTLE_TTL_MS ?? '60000', 10),
-    limit: parseInt(process.env.THROTTLE_LIMIT ?? '100', 10),
-  },
-});
+} => {
+  const nodeEnv = process.env.NODE_ENV ?? 'development';
+  return {
+    app: {
+      nodeEnv,
+      port: parseInt(process.env.PORT ?? '3000', 10),
+      logLevel: process.env.LOG_LEVEL ?? 'info',
+      corsAllowedOrigins: (process.env.CORS_ALLOWED_ORIGINS ?? '')
+        .split(',')
+        .map((origin) => origin.trim())
+        .filter((origin) => origin.length > 0),
+    },
+    ws: {
+      authSecret: process.env.WS_AUTH_SECRET ?? '',
+    },
+    db: {
+      url: validateDatabaseUrl(nodeEnv, process.env.DATABASE_URL),
+    },
+    soroban: {
+      rpcUrl:
+        process.env.SOROBAN_RPC_URL ?? 'https://soroban-testnet.stellar.org',
+      networkPassphrase:
+        process.env.SOROBAN_NETWORK_PASSPHRASE ??
+        'Test SDF Network ; September 2015',
+      productionEscrowContractId: process.env.PRODUCTION_ESCROW_CONTRACT_ID ?? '',
+      escrowContractId: process.env.ESCROW_CONTRACT_ID ?? '',
+      eventPollIntervalMs: parseInt(
+        process.env.EVENT_POLL_INTERVAL_MS ?? '5000',
+        10,
+      ),
+      eventRetentionDays: parseInt(process.env.EVENT_RETENTION_DAYS ?? '7', 10),
+      indexerStartLedger: process.env.SOROBAN_INDEXER_START_LEDGER
+        ? parseInt(process.env.SOROBAN_INDEXER_START_LEDGER, 10)
+        : undefined,
+    },
+    throttle: {
+      ttlMs: parseInt(process.env.THROTTLE_TTL_MS ?? '60000', 10),
+      limit: parseInt(process.env.THROTTLE_LIMIT ?? '100', 10),
+    },
+  };
+};
