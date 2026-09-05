@@ -47,6 +47,7 @@
     "@nestjs/platform-express": "^10.4.4",
     "@nestjs/platform-socket.io": "^10.4.22",
     "@nestjs/terminus": "^10.2.3",
+    "@nestjs/schedule": "^4.1.0",
     "@nestjs/throttler": "^6.5.0",
     "@nestjs/websockets": "^10.4.22",
     "@prisma/adapter-pg": "^7.9.1",
