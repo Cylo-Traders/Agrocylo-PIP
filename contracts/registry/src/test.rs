@@ -993,3 +993,108 @@ fn test_farmer_campaigns_paginate_across_multiple_pages() {
         assert_eq!(campaigns.get(i).unwrap(), i as u64);
     }
 }
+
+// Farmer & Campaign Enumeration Tests
+
+#[test]
+fn test_get_farmer_count_and_addresses() {
+    let (env, admin, _, _, client) = create_test_env();
+    client.initialize(&admin);
+
+    assert_eq!(client.get_farmer_count(), 0);
+
+    let user1 = Address::generate(&env);
+    let user2 = Address::generate(&env);
+    let user3 = Address::generate(&env);
+    let name = String::from_str(&env, "Farmer");
+    let location = String::from_str(&env, "Somewhere");
+
+    client.register_farmer(&user1, &name, &location);
+    client.register_farmer(&user2, &name, &location);
+    client.register_farmer(&user3, &name, &location);
+
+    assert_eq!(client.get_farmer_count(), 3);
+
+    // Registration order, offset/limit bounded.
+    let all = client.get_farmers(&0u64, &10u32);
+    assert_eq!(all.len(), 3);
+    assert_eq!(all.get(0).unwrap(), user1);
+    assert_eq!(all.get(1).unwrap(), user2);
+    assert_eq!(all.get(2).unwrap(), user3);
+
+    let middle = client.get_farmers(&1u64, &1u32);
+    assert_eq!(middle.len(), 1);
+    assert_eq!(middle.get(0).unwrap(), user2);
+
+    // Past the end: bounded, not an error.
+    let past_end = client.get_farmers(&10u64, &5u32);
+    assert_eq!(past_end.len(), 0);
+}
+
+#[test]
+fn test_get_farmer_addresses_empty() {
+    let (_, admin, _, _, client) = create_test_env();
+    client.initialize(&admin);
+
+    assert_eq!(client.get_farmer_count(), 0);
+    assert_eq!(client.get_farmers(&0u64, &10u32).len(), 0);
+}
+
+#[test]
+fn test_get_campaign_count_and_campaigns() {
+    let (env, admin, user, _, client) = create_test_env();
+    client.initialize(&admin);
+
+    assert_eq!(client.get_campaign_count(), 0);
+
+    for i in 0..3u64 {
+        client.register_campaign(
+            &i,
+            &user,
+            &String::from_str(&env, "Coffee Farm"),
+            &String::from_str(&env, "Premium coffee"),
+        );
+    }
+
+    assert_eq!(client.get_campaign_count(), 3);
+
+    let all = client.get_campaigns(&0u64, &10u32);
+    assert_eq!(all.len(), 3);
+    for i in 0..3u64 {
+        assert_eq!(all.get(i as u32).unwrap(), i);
+    }
+}
+
+/// `index_campaign` is called from both `register_campaign` and
+/// `link_campaign_escrow`. A fully-onboarded campaign always goes through
+/// both, so this is the normal path, not an edge case: without the
+/// idempotency guard, every linked campaign would be double-counted and
+/// appear twice in the global index.
+#[test]
+fn test_campaign_indexed_once_despite_register_and_link() {
+    let (env, admin, user, escrow, client) = create_test_env();
+    client.initialize(&admin);
+
+    let campaign_id = 1u64;
+    client.register_campaign(
+        &campaign_id,
+        &user,
+        &String::from_str(&env, "Coffee Farm"),
+        &String::from_str(&env, "Premium coffee"),
+    );
+    assert_eq!(client.get_campaign_count(), 1);
+
+    client.link_campaign_escrow(
+        &campaign_id,
+        &user,
+        &escrow,
+        &Symbol::new(&env, "coffee"),
+        &Symbol::new(&env, "highlands"),
+    );
+
+    // Still 1, not 2: link_campaign_escrow's index_campaign call was a no-op.
+    assert_eq!(client.get_campaign_count(), 1);
+    let campaigns = client.get_campaigns(&0u64, &10u32);
+    assert_eq!(campaigns.len(), 1);
+    assert_eq!(campaigns.get(0).unwrap(), campaign_id);
+}

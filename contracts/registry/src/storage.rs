@@ -184,3 +184,100 @@ pub fn add_farmer_campaign(env: &Env, farmer: &Address, campaign_id: u64) {
     }
     extend_persistent_ttl(env, &count_key);
 }
+
+pub fn get_campaign_count(env: &Env) -> u64 {
+    env.storage()
+        .persistent()
+        .get(&DataKey::CampaignCount)
+        .unwrap_or(0)
+}
+
+fn is_campaign_indexed(env: &Env, campaign_id: u64) -> bool {
+    env.storage()
+        .persistent()
+        .has(&DataKey::CampaignIndexed(campaign_id))
+}
+
+/// Appends `campaign_id` to the flat global campaign index. Idempotent: a
+/// campaign that is both `register_campaign`'d and `link_campaign_escrow`'d
+/// indexes through here twice, and the second call must be a no-op rather
+/// than double-counting or duplicating the entry.
+pub fn index_campaign(env: &Env, campaign_id: u64) {
+    if is_campaign_indexed(env, campaign_id) {
+        return;
+    }
+
+    let indexed_key = DataKey::CampaignIndexed(campaign_id);
+    env.storage().persistent().set(&indexed_key, &true);
+    extend_persistent_ttl(env, &indexed_key);
+
+    let count_key = DataKey::CampaignCount;
+    let count = get_campaign_count(env);
+
+    let index_key = DataKey::CampaignByIndex(count);
+    env.storage().persistent().set(&index_key, &campaign_id);
+    extend_persistent_ttl(env, &index_key);
+
+    env.storage().persistent().set(&count_key, &(count + 1));
+    extend_persistent_ttl(env, &count_key);
+}
+
+/// Returns up to `limit` campaign ids starting at `offset` (0-based, index
+/// order). Indices at or past the current count are simply omitted rather
+/// than erroring, so callers can safely page past the end.
+pub fn get_campaigns(env: &Env, offset: u64, limit: u32) -> Vec<u64> {
+    let count = get_campaign_count(env);
+    let mut campaign_ids = Vec::new(env);
+    let mut index = offset;
+    let mut remaining = limit;
+    while remaining > 0 && index < count {
+        let key = DataKey::CampaignByIndex(index);
+        if let Some(campaign_id) = env.storage().persistent().get(&key) {
+            campaign_ids.push_back(campaign_id);
+        }
+        index += 1;
+        remaining -= 1;
+    }
+    campaign_ids
+}
+
+pub fn get_farmer_count(env: &Env) -> u64 {
+    env.storage()
+        .persistent()
+        .get(&DataKey::FarmerCount)
+        .unwrap_or(0)
+}
+
+/// Appends `farmer` to the flat global farmer index. Unlike `index_campaign`,
+/// this does not need to be idempotent: its only call site, `register_farmer`,
+/// already guards on `has_farmer` and can run at most once per address.
+pub fn index_farmer(env: &Env, farmer: &Address) {
+    let count_key = DataKey::FarmerCount;
+    let count = get_farmer_count(env);
+
+    let index_key = DataKey::FarmerByIndex(count);
+    env.storage().persistent().set(&index_key, farmer);
+    extend_persistent_ttl(env, &index_key);
+
+    env.storage().persistent().set(&count_key, &(count + 1));
+    extend_persistent_ttl(env, &count_key);
+}
+
+/// Returns up to `limit` farmer addresses starting at `offset` (0-based,
+/// registration order). Indices at or past the current count are simply
+/// omitted rather than erroring, so callers can safely page past the end.
+pub fn get_farmer_addresses(env: &Env, offset: u64, limit: u32) -> Vec<Address> {
+    let count = get_farmer_count(env);
+    let mut addresses = Vec::new(env);
+    let mut index = offset;
+    let mut remaining = limit;
+    while remaining > 0 && index < count {
+        let key = DataKey::FarmerByIndex(index);
+        if let Some(address) = env.storage().persistent().get(&key) {
+            addresses.push_back(address);
+        }
+        index += 1;
+        remaining -= 1;
+    }
+    addresses
+}
