@@ -50,6 +50,18 @@ impl RegistryContract {
         farmer::get_farmer(&env, &farmer)
     }
 
+    /// Total number of registered farmers. Use with `get_farmers` for
+    /// bounded, offset-paginated reads of the full farmer list.
+    pub fn get_farmer_count(env: Env) -> u64 {
+        farmer::get_farmer_count(&env)
+    }
+
+    /// Up to `limit` registered farmer addresses starting at `offset`
+    /// (0-based, registration order).
+    pub fn get_farmers(env: Env, offset: u64, limit: u32) -> Vec<Address> {
+        farmer::get_farmers(&env, offset, limit)
+    }
+
     pub fn register_campaign(
         env: Env,
         campaign_id: u64,
@@ -62,6 +74,19 @@ impl RegistryContract {
 
     pub fn get_campaign(env: Env, campaign_id: u64) -> Option<CampaignInfo> {
         campaign::get_campaign(&env, campaign_id)
+    }
+
+    /// Total number of distinct campaigns indexed via `register_campaign`
+    /// and/or `link_campaign_escrow`. Use with `get_campaigns` for bounded,
+    /// offset-paginated reads of the full campaign id list.
+    pub fn get_campaign_count(env: Env) -> u64 {
+        campaign::get_campaign_count(&env)
+    }
+
+    /// Up to `limit` campaign ids starting at `offset` (0-based, index
+    /// order).
+    pub fn get_campaigns(env: Env, offset: u64, limit: u32) -> Vec<u64> {
+        campaign::get_campaigns(&env, offset, limit)
     }
 
     pub fn record_activity(

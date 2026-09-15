@@ -36,6 +36,18 @@ pub fn get_campaign(env: &Env, campaign_id: u64) -> Option<CampaignInfo> {
     storage::get_campaign(env, campaign_id)
 }
 
+/// Total number of distinct campaigns indexed via `register_campaign` and/or
+/// `link_campaign_escrow`. Use with `get_campaigns` for bounded,
+/// offset-paginated reads of the full campaign id list.
+pub fn get_campaign_count(env: &Env) -> u64 {
+    storage::get_campaign_count(env)
+}
+
+/// Up to `limit` campaign ids starting at `offset` (0-based, index order).
+pub fn get_campaigns(env: &Env, offset: u64, limit: u32) -> Vec<u64> {
+    storage::get_campaigns(env, offset, limit)
+}
+
 /// Links a campaign to its ProductionEscrowContract instance and crop/region
 /// metadata, and begins tracking its lifecycle status. Distinct from
 /// `register_campaign`, which stores the farmer-authored title/description.

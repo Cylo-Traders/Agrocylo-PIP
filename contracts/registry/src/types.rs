@@ -94,4 +94,12 @@ pub enum DataKey {
     FarmerCampaignsPage(Address, u32),
     /// Number of non-empty campaign pages for `farmer`.
     FarmerCampaignsPageCount(Address),
+    /// Marks `campaign_id` as already present in the global campaign index,
+    /// so `storage::index_campaign` — called from both `register_campaign`
+    /// and `link_campaign_escrow` — can be idempotent.
+    CampaignIndexed(u64),
+    /// Slot `n` (0-based) of the flat, append-only global campaign index.
+    CampaignByIndex(u64),
+    /// Slot `n` (0-based) of the flat, append-only global farmer index.
+    FarmerByIndex(u64),
 }
