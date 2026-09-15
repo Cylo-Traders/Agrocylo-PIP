@@ -3,14 +3,8 @@ name: Client CI
 on:
   push:
     branches: [master, main]
-    paths:
-      - "client/**"
-      - ".github/workflows/client-ci.yml"
   pull_request:
     branches: [master, main]
-    paths:
-      - "client/**"
-      - ".github/workflows/client-ci.yml"
 
 # A newer push to the same PR cancels the previous run instead of queueing
 # behind it, so contributors see the result for their latest commit.
@@ -32,8 +26,26 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # This job is a required status check on master, but the workflow used to
+      # be path-filtered at the trigger level — so a PR that never touches
+      # client/ would never get this check to report, and GitHub would block
+      # the merge waiting forever. Triggering unconditionally and skipping the
+      # real work here instead means the check always reports (trivially
+      # passing) even when there's nothing to check.
+      - name: Check for relevant changes
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            client:
+              - "client/**"
+              - ".github/workflows/client-ci.yml"
 
       - name: Setup Node.js
+        if: steps.filter.outputs.client == 'true'
         uses: actions/setup-node@v4
         with:
           # Must satisfy every tool's `engines` range — lint-staged 17 needs
@@ -43,22 +55,29 @@ jobs:
           cache-dependency-path: client/package-lock.json
 
       - name: Install dependencies
+        if: steps.filter.outputs.client == 'true'
         run: npm ci
 
       - name: Audit production dependencies (fail on new high/critical)
+        if: steps.filter.outputs.client == 'true'
         run: node scripts/check-prod-audit.mjs
 
       - name: Lint
+        if: steps.filter.outputs.client == 'true'
         run: npm run lint
 
       - name: Format check
+        if: steps.filter.outputs.client == 'true'
         run: npm run format:check
 
       - name: Typecheck
+        if: steps.filter.outputs.client == 'true'
         run: npm run typecheck
 
       - name: Test
+        if: steps.filter.outputs.client == 'true'
         run: npm test
 
       - name: Build
+        if: steps.filter.outputs.client == 'true'
         run: npm run build

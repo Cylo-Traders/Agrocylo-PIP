@@ -1,0 +1,4 @@
+# Default owner for everything not matched below.
+# Required so "Require code owner review" can be turned on later without
+# every path needing an explicit entry.
+*       @Dannyswiss1

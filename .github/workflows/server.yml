@@ -3,14 +3,8 @@ name: Server
 on:
   push:
     branches: [master, main]
-    paths:
-      - "server/**"
-      - ".github/workflows/server.yml"
   pull_request:
     branches: [master, main]
-    paths:
-      - "server/**"
-      - ".github/workflows/server.yml"
 
 # A newer push to the same PR cancels the previous run instead of queueing
 # behind it, so contributors see the result for their latest commit.
@@ -38,8 +32,26 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # This job is a required status check on master, but the workflow used to
+      # be path-filtered at the trigger level — so a PR that never touches
+      # server/ would never get this check to report, and GitHub would block
+      # the merge waiting forever. Triggering unconditionally and skipping the
+      # real work here instead means the check always reports (trivially
+      # passing) even when there's nothing to check.
+      - name: Check for relevant changes
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            server:
+              - "server/**"
+              - ".github/workflows/server.yml"
 
       - name: Setup Node.js
+        if: steps.filter.outputs.server == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -47,27 +59,35 @@ jobs:
           cache-dependency-path: server/package-lock.json
 
       - name: Install dependencies
+        if: steps.filter.outputs.server == 'true'
         run: npm ci
 
       - name: Audit production dependencies (fail on new high/critical)
+        if: steps.filter.outputs.server == 'true'
         run: node scripts/check-prod-audit.mjs
 
       - name: Lint
+        if: steps.filter.outputs.server == 'true'
         run: npm run lint
 
       - name: Format check
+        if: steps.filter.outputs.server == 'true'
         run: npm run format:check
 
       # Covers test/**, which `nest build` excludes — without this, type errors
       # in the e2e specs only surface when jest runs them.
       - name: Typecheck
+        if: steps.filter.outputs.server == 'true'
         run: npm run typecheck
 
       - name: Build
+        if: steps.filter.outputs.server == 'true'
         run: npm run build
 
       - name: Run unit tests
+        if: steps.filter.outputs.server == 'true'
         run: npm test
 
       - name: Run e2e tests
+        if: steps.filter.outputs.server == 'true'
         run: npm run test:e2e

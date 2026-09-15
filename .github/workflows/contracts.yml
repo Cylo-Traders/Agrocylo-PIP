@@ -3,14 +3,8 @@ name: Contracts
 on:
   push:
     branches: [master, main]
-    paths:
-      - "contracts/**"
-      - ".github/workflows/contracts.yml"
   pull_request:
     branches: [master, main]
-    paths:
-      - "contracts/**"
-      - ".github/workflows/contracts.yml"
 
 # A newer push to the same PR cancels the previous run instead of queueing
 # behind it, so contributors see the result for their latest commit.
@@ -34,31 +28,55 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # This job is a required status check on master, but the workflow used to
+      # be path-filtered at the trigger level — so a PR that never touches
+      # contracts/ would never get this check to report, and GitHub would block
+      # the merge waiting forever. Triggering unconditionally and skipping the
+      # real work here instead means the check always reports (trivially
+      # passing) even when there's nothing to check.
+      - name: Check for relevant changes
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            contracts:
+              - "contracts/**"
+              - ".github/workflows/contracts.yml"
 
       - name: Install Rust toolchain
+        if: steps.filter.outputs.contracts == 'true'
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
           components: rustfmt, clippy
 
       - name: Cache cargo
+        if: steps.filter.outputs.contracts == 'true'
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: contracts
 
       - name: Format check
+        if: steps.filter.outputs.contracts == 'true'
         run: cargo fmt --all --check
 
       - name: Clippy
+        if: steps.filter.outputs.contracts == 'true'
         run: cargo clippy --all-targets --all-features -- -D warnings
 
       - name: Build (release)
+        if: steps.filter.outputs.contracts == 'true'
         run: cargo build --target wasm32-unknown-unknown --release
 
       - name: Run tests
+        if: steps.filter.outputs.contracts == 'true'
         run: cargo test
 
       - name: Property-based tests (escrow invariants)
+        if: steps.filter.outputs.contracts == 'true'
         env:
           PROPTEST_CASES: 1000
         run: cargo test -p production_escrow proptest
