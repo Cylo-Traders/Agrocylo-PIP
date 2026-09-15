@@ -100,6 +100,7 @@ jobs:
         run: npm run build
 
       - name: Apply database migrations
+        if: steps.filter.outputs.server == 'true'
         run: npm run db:migrate:deploy
 
       - name: Run unit tests
