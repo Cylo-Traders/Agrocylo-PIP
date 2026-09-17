@@ -1,5 +1,5 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
-import { PrismaClient } from '../../../generated/prisma/client';
+import { Prisma, PrismaClient } from '../../../generated/prisma/client';
 import { RealtimeEventsService } from '../../websocket/realtime-events.service';
 import type { CampaignEventType } from '../../websocket/events.types';
 import type {
@@ -914,97 +914,103 @@ export class EventParserService {
   // ---------------------------------------------------------------------
 
   private async persistEvent(parsed: ParsedEvent): Promise<boolean> {
-    const existing = await this.prisma.transaction.findUnique({
-      where: { id: parsed.id },
+    return this.prisma.$transaction(async (tx) => {
+      const existing = await tx.transaction.findUnique({
+        where: { id: parsed.id },
+      });
+      if (existing) return false;
+
+      switch (parsed.type) {
+        case 'campaign.escrow_created':
+          await this.handleCampaignEscrowCreated(parsed, tx);
+          break;
+        case 'campaign.invested':
+          await this.handleCampaignInvested(parsed, tx);
+          break;
+        case 'campaign.contrib_reconciled':
+          await this.handleContribReconciled(parsed, tx);
+          break;
+        case 'campaign.funded':
+          await this.handleCampaignFunded(parsed, tx);
+          break;
+        case 'campaign.tranches_configured':
+          await this.handleTranchesConfigured(parsed, tx);
+          break;
+        case 'campaign.tranche_released':
+          await this.handleTrancheReleased(parsed, tx);
+          break;
+        case 'campaign.harvest_reported':
+          await this.handleHarvestReported(parsed, tx);
+          break;
+        case 'campaign.failed':
+          await this.handleCampaignFailed(parsed, tx);
+          break;
+        case 'campaign.return_claimed':
+        case 'campaign.refund_claimed':
+          await this.handleClaim(parsed, tx);
+          break;
+        case 'campaign.dispute_opened':
+          await this.handleDisputeOpened(parsed, tx);
+          break;
+        case 'campaign.dispute_resolved':
+          await this.handleDisputeResolved(parsed, tx);
+          break;
+        case 'campaign.settled':
+          await this.handleCampaignSettled(parsed, tx);
+          break;
+        case 'campaign.created':
+          await this.handleCampaignCreated(parsed, tx);
+          break;
+        case 'campaign.escrow_linked':
+          await this.handleCampaignEscrowLinked(parsed, tx);
+          break;
+        case 'campaign.status_updated':
+          await this.handleCampaignStatusUpdated(parsed, tx);
+          break;
+        case 'registry.farmer_registered':
+          await this.handleFarmerRegistered(parsed, tx);
+          break;
+        case 'registry.admin_initialized':
+        case 'registry.admin_updated':
+        case 'registry.contract_approved':
+        case 'registry.contract_revoked':
+        case 'registry.activity_recorded':
+          // Administrative/audit-only events: no domain row needs to change.
+          // Still captured below via the generic Transaction audit row.
+          break;
+        default:
+          this.logger.warn(
+            { type: parsed.type },
+            'No persistence handler for parsed event type',
+          );
+      }
+
+      await tx.transaction.create({
+        data: {
+          id: parsed.id,
+          type: parsed.type,
+          campaignId: parsed.campaignId,
+          userId: parsed.userAddress,
+          amount: parsed.amount,
+          txHash: parsed.txHash,
+          status: 'Confirmed',
+          timestamp: BigInt(parsed.ledger),
+          data: JSON.stringify(parsed, (_key, value) =>
+            typeof value === 'bigint' ? value.toString() : value,
+          ),
+        },
+      });
+
+      return true;
     });
-    if (existing) return false;
-
-    switch (parsed.type) {
-      case 'campaign.escrow_created':
-        await this.handleCampaignEscrowCreated(parsed);
-        break;
-      case 'campaign.invested':
-        await this.handleCampaignInvested(parsed);
-        break;
-      case 'campaign.contrib_reconciled':
-        await this.handleContribReconciled(parsed);
-        break;
-      case 'campaign.funded':
-        await this.handleCampaignFunded(parsed);
-        break;
-      case 'campaign.tranches_configured':
-        await this.handleTranchesConfigured(parsed);
-        break;
-      case 'campaign.tranche_released':
-        await this.handleTrancheReleased(parsed);
-        break;
-      case 'campaign.harvest_reported':
-        await this.handleHarvestReported(parsed);
-        break;
-      case 'campaign.failed':
-        await this.handleCampaignFailed(parsed);
-        break;
-      case 'campaign.return_claimed':
-      case 'campaign.refund_claimed':
-        await this.handleClaim(parsed);
-        break;
-      case 'campaign.dispute_opened':
-        await this.handleDisputeOpened(parsed);
-        break;
-      case 'campaign.dispute_resolved':
-        await this.handleDisputeResolved(parsed);
-        break;
-      case 'campaign.settled':
-        await this.handleCampaignSettled(parsed);
-        break;
-      case 'campaign.created':
-        await this.handleCampaignCreated(parsed);
-        break;
-      case 'campaign.escrow_linked':
-        await this.handleCampaignEscrowLinked(parsed);
-        break;
-      case 'campaign.status_updated':
-        await this.handleCampaignStatusUpdated(parsed);
-        break;
-      case 'registry.farmer_registered':
-        await this.handleFarmerRegistered(parsed);
-        break;
-      case 'registry.admin_initialized':
-      case 'registry.admin_updated':
-      case 'registry.contract_approved':
-      case 'registry.contract_revoked':
-      case 'registry.activity_recorded':
-        // Administrative/audit-only events: no domain row needs to change.
-        // Still captured below via the generic Transaction audit row.
-        break;
-      default:
-        this.logger.warn(
-          { type: parsed.type },
-          'No persistence handler for parsed event type',
-        );
-    }
-
-    await this.prisma.transaction.create({
-      data: {
-        id: parsed.id,
-        type: parsed.type,
-        campaignId: parsed.campaignId,
-        userId: parsed.userAddress,
-        amount: parsed.amount,
-        txHash: parsed.txHash,
-        status: 'Confirmed',
-        timestamp: BigInt(parsed.ledger),
-        data: JSON.stringify(parsed, (_key, value) =>
-          typeof value === 'bigint' ? value.toString() : value,
-        ),
-      },
-    });
-
-    return true;
   }
 
-  private async ensureUser(address: string, timestamp: number): Promise<void> {
-    await this.prisma.user.upsert({
+  private async ensureUser(
+    address: string,
+    timestamp: number,
+    tx: Prisma.TransactionClient,
+  ): Promise<void> {
+    await tx.user.upsert({
       where: { address },
       update: {},
       create: { address, firstSeenAt: BigInt(timestamp) },
@@ -1013,11 +1019,12 @@ export class EventParserService {
 
   private async handleCampaignEscrowCreated(
     parsed: ParsedEvent,
+    tx: Prisma.TransactionClient,
   ): Promise<void> {
     const data = parsed.data as unknown as CampaignEscrowCreatedData;
-    await this.ensureUser(data.farmer, data.timestamp);
+    await this.ensureUser(data.farmer, data.timestamp, tx);
 
-    await this.prisma.campaign.upsert({
+    await tx.campaign.upsert({
       where: { id: data.campaignId },
       update: { farmer: data.farmer, targetAmount: BigInt(data.targetAmount) },
       create: {
@@ -1034,15 +1041,18 @@ export class EventParserService {
     );
   }
 
-  private async handleCampaignInvested(parsed: ParsedEvent): Promise<void> {
+  private async handleCampaignInvested(
+    parsed: ParsedEvent,
+    tx: Prisma.TransactionClient,
+  ): Promise<void> {
     const data = parsed.data as unknown as CampaignInvestedData;
     const campaignId = data.campaignId;
 
-    await this.ensureUser(data.investor, data.timestamp);
+    await this.ensureUser(data.investor, data.timestamp, tx);
 
     const amount = BigInt(data.amount);
 
-    await this.prisma.investment.create({
+    await tx.investment.create({
       data: {
         id: parsed.id,
         campaignId,
@@ -1053,7 +1063,7 @@ export class EventParserService {
       },
     });
 
-    await this.prisma.campaign.update({
+    await tx.campaign.update({
       where: { id: campaignId },
       data: { totalFunded: { increment: amount } },
     });
@@ -1075,12 +1085,15 @@ export class EventParserService {
    * lets monitoring flag/alert on this path separately, per the contract's
    * documented trust model.
    */
-  private async handleContribReconciled(parsed: ParsedEvent): Promise<void> {
+  private async handleContribReconciled(
+    parsed: ParsedEvent,
+    tx: Prisma.TransactionClient,
+  ): Promise<void> {
     const data = parsed.data as unknown as CampaignInvestedData;
 
-    await this.ensureUser(data.investor, data.timestamp);
+    await this.ensureUser(data.investor, data.timestamp, tx);
 
-    await this.prisma.campaign.update({
+    await tx.campaign.update({
       where: { id: data.campaignId },
       data: { totalFunded: { increment: BigInt(data.amount) } },
     });
@@ -1095,18 +1108,24 @@ export class EventParserService {
     );
   }
 
-  private async handleCampaignFunded(parsed: ParsedEvent): Promise<void> {
+  private async handleCampaignFunded(
+    parsed: ParsedEvent,
+    tx: Prisma.TransactionClient,
+  ): Promise<void> {
     const data = parsed.data as unknown as CampaignFundedData;
-    await this.prisma.campaign.update({
+    await tx.campaign.update({
       where: { id: data.campaignId },
       data: { status: 'Funded', totalFunded: BigInt(data.totalFunded) },
     });
     this.logger.log({ campaignId: data.campaignId }, 'Campaign funded');
   }
 
-  private async handleTranchesConfigured(parsed: ParsedEvent): Promise<void> {
+  private async handleTranchesConfigured(
+    parsed: ParsedEvent,
+    tx: Prisma.TransactionClient,
+  ): Promise<void> {
     const data = parsed.data as unknown as TranchesConfiguredData;
-    await this.prisma.campaign.update({
+    await tx.campaign.update({
       where: { id: data.campaignId },
       data: { trancheCount: data.trancheCount },
     });
@@ -1116,10 +1135,13 @@ export class EventParserService {
     );
   }
 
-  private async handleTrancheReleased(parsed: ParsedEvent): Promise<void> {
+  private async handleTrancheReleased(
+    parsed: ParsedEvent,
+    tx: Prisma.TransactionClient,
+  ): Promise<void> {
     const data = parsed.data as unknown as TrancheReleasedData;
-    await this.ensureUser(data.recipient, data.timestamp);
-    await this.prisma.tranche.create({
+    await this.ensureUser(data.recipient, data.timestamp, tx);
+    await tx.tranche.create({
       data: {
         id: parsed.id,
         campaignId: data.campaignId,
@@ -1135,7 +1157,7 @@ export class EventParserService {
     // lifecycle transition in the index, scoping the write to the current
     // `Funded` status so a second/third release on an already-InProduction
     // campaign matches zero rows and is a no-op instead of a redundant write.
-    await this.prisma.campaign.updateMany({
+    await tx.campaign.updateMany({
       where: { id: data.campaignId, status: 'Funded' },
       data: { status: 'InProduction' },
     });
@@ -1146,9 +1168,12 @@ export class EventParserService {
     );
   }
 
-  private async handleHarvestReported(parsed: ParsedEvent): Promise<void> {
+  private async handleHarvestReported(
+    parsed: ParsedEvent,
+    tx: Prisma.TransactionClient,
+  ): Promise<void> {
     const data = parsed.data as unknown as HarvestReportedData;
-    await this.prisma.campaign.update({
+    await tx.campaign.update({
       where: { id: data.campaignId },
       data: {
         status: 'Harvested',
@@ -1162,16 +1187,22 @@ export class EventParserService {
     );
   }
 
-  private async handleCampaignFailed(parsed: ParsedEvent): Promise<void> {
+  private async handleCampaignFailed(
+    parsed: ParsedEvent,
+    tx: Prisma.TransactionClient,
+  ): Promise<void> {
     const data = parsed.data as unknown as CampaignFailedData;
-    await this.prisma.campaign.update({
+    await tx.campaign.update({
       where: { id: data.campaignId },
       data: { status: 'Failed', refundable: BigInt(data.refundable) },
     });
     this.logger.log({ campaignId: data.campaignId }, 'Campaign failed');
   }
 
-  private async handleClaim(parsed: ParsedEvent): Promise<void> {
+  private async handleClaim(
+    parsed: ParsedEvent,
+    tx: Prisma.TransactionClient,
+  ): Promise<void> {
     // ReturnClaimed/RefundClaimed report a payout to an investor after
     // settlement/failure. A claim aggregates an investor's whole position
     // rather than a single contribution, so it isn't attributed to a
@@ -1179,15 +1210,17 @@ export class EventParserService {
     // audit row created in persistEvent. We still upsert the User row so
     // that audit row's userId FK is valid.
     const data = parsed.data as unknown as
-      | ReturnClaimedData
-      | RefundClaimedData;
-    await this.ensureUser(data.investor, data.timestamp);
+      ReturnClaimedData | RefundClaimedData;
+    await this.ensureUser(data.investor, data.timestamp, tx);
   }
 
-  private async handleDisputeOpened(parsed: ParsedEvent): Promise<void> {
+  private async handleDisputeOpened(
+    parsed: ParsedEvent,
+    tx: Prisma.TransactionClient,
+  ): Promise<void> {
     const data = parsed.data as unknown as DisputeOpenedData;
-    await this.ensureUser(data.opener, data.timestamp);
-    await this.prisma.dispute.create({
+    await this.ensureUser(data.opener, data.timestamp, tx);
+    await tx.dispute.create({
       data: {
         id: parsed.id,
         campaignId: data.campaignId,
@@ -1198,7 +1231,7 @@ export class EventParserService {
         ledgerSequence: data.ledgerSequence,
       },
     });
-    await this.prisma.campaign.update({
+    await tx.campaign.update({
       where: { id: data.campaignId },
       data: { status: 'Disputed' },
     });
@@ -1208,16 +1241,19 @@ export class EventParserService {
     );
   }
 
-  private async handleDisputeResolved(parsed: ParsedEvent): Promise<void> {
+  private async handleDisputeResolved(
+    parsed: ParsedEvent,
+    tx: Prisma.TransactionClient,
+  ): Promise<void> {
     const data = parsed.data as unknown as DisputeResolvedData;
 
-    const openDispute = await this.prisma.dispute.findFirst({
+    const openDispute = await tx.dispute.findFirst({
       where: { campaignId: data.campaignId, status: 'Open' },
       orderBy: { openedAt: 'desc' },
     });
 
     if (openDispute) {
-      await this.prisma.dispute.update({
+      await tx.dispute.update({
         where: { id: openDispute.id },
         data: {
           status: 'Resolved',
@@ -1235,7 +1271,7 @@ export class EventParserService {
       );
     }
 
-    await this.prisma.campaign.update({
+    await tx.campaign.update({
       where: { id: data.campaignId },
       data: {
         status: 'Resolved',
@@ -1252,9 +1288,12 @@ export class EventParserService {
     );
   }
 
-  private async handleCampaignSettled(parsed: ParsedEvent): Promise<void> {
+  private async handleCampaignSettled(
+    parsed: ParsedEvent,
+    tx: Prisma.TransactionClient,
+  ): Promise<void> {
     const data = parsed.data as unknown as CampaignSettledData;
-    await this.prisma.campaign.update({
+    await tx.campaign.update({
       where: { id: data.campaignId },
       data: {
         status: 'Settled',
@@ -1270,11 +1309,14 @@ export class EventParserService {
     );
   }
 
-  private async handleCampaignCreated(parsed: ParsedEvent): Promise<void> {
+  private async handleCampaignCreated(
+    parsed: ParsedEvent,
+    tx: Prisma.TransactionClient,
+  ): Promise<void> {
     const data = parsed.data as unknown as CampaignCreatedData;
-    await this.ensureUser(data.farmer, data.timestamp);
+    await this.ensureUser(data.farmer, data.timestamp, tx);
 
-    await this.prisma.campaign.upsert({
+    await tx.campaign.upsert({
       where: { id: data.campaignId },
       update:
         data.title !== undefined
@@ -1294,9 +1336,12 @@ export class EventParserService {
     );
   }
 
-  private async handleCampaignEscrowLinked(parsed: ParsedEvent): Promise<void> {
+  private async handleCampaignEscrowLinked(
+    parsed: ParsedEvent,
+    tx: Prisma.TransactionClient,
+  ): Promise<void> {
     const data = parsed.data as unknown as CampaignEscrowLinkedData;
-    await this.prisma.campaign.update({
+    await tx.campaign.update({
       where: { id: data.campaignId },
       data: { escrowContract: data.escrowContract, farmer: data.farmer },
     });
@@ -1308,13 +1353,14 @@ export class EventParserService {
 
   private async handleCampaignStatusUpdated(
     parsed: ParsedEvent,
+    tx: Prisma.TransactionClient,
   ): Promise<void> {
     const data = parsed.data as unknown as CampaignStatusUpdatedData;
     if (!data.newStatus) {
       // Activity-log mirror shape - no concrete status value to apply.
       return;
     }
-    await this.prisma.campaign.update({
+    await tx.campaign.update({
       where: { id: data.campaignId },
       data: { status: data.newStatus },
     });
@@ -1324,9 +1370,12 @@ export class EventParserService {
     );
   }
 
-  private async handleFarmerRegistered(parsed: ParsedEvent): Promise<void> {
+  private async handleFarmerRegistered(
+    parsed: ParsedEvent,
+    tx: Prisma.TransactionClient,
+  ): Promise<void> {
     const data = parsed.data as unknown as FarmerRegisteredData;
-    await this.prisma.user.upsert({
+    await tx.user.upsert({
       where: { address: data.farmer },
       update: data.name !== undefined ? { name: data.name } : {},
       create: {

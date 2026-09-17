@@ -3,6 +3,7 @@ import { EventParserService } from './event-parser.service';
 import type { RawSorobanEvent } from '../types/soroban-events.types';
 
 type MockPrisma = {
+  $transaction: jest.Mock;
   transaction: { findUnique: jest.Mock; create: jest.Mock };
   campaign: {
     upsert: jest.Mock;
@@ -16,7 +17,8 @@ type MockPrisma = {
 };
 
 function makeMockPrisma(): MockPrisma {
-  return {
+  const prisma = {
+    $transaction: jest.fn(),
     transaction: {
       findUnique: jest.fn().mockResolvedValue(null),
       create: jest.fn().mockResolvedValue({}),
@@ -41,6 +43,10 @@ function makeMockPrisma(): MockPrisma {
       findFirst: jest.fn().mockResolvedValue(null),
     },
   };
+  prisma.$transaction.mockImplementation(
+    async (callback: (tx: MockPrisma) => Promise<unknown>) => callback(prisma),
+  );
+  return prisma;
 }
 
 function rawEvent(
@@ -183,6 +189,92 @@ describe('EventParserService', () => {
 
       expect(prisma.investment.create).toHaveBeenCalledTimes(1);
       expect(prisma.campaign.update).toHaveBeenCalledTimes(1);
+    });
+
+    it('rolls back a partial write and succeeds exactly once when retried', async () => {
+      let failCampaignUpdate = true;
+      let state = {
+        investments: new Set<string>(),
+        processedEvents: new Set<string>(),
+        totalFunded: 0n,
+      };
+
+      const atomicPrisma = {
+        $transaction: jest.fn(
+          async (
+            callback: (tx: Record<string, unknown>) => Promise<unknown>,
+          ) => {
+            const staged = {
+              investments: new Set(state.investments),
+              processedEvents: new Set(state.processedEvents),
+              totalFunded: state.totalFunded,
+            };
+            const tx = {
+              transaction: {
+                findUnique: jest.fn(
+                  async ({ where }: { where: { id: string } }) =>
+                    staged.processedEvents.has(where.id)
+                      ? { id: where.id }
+                      : null,
+                ),
+                create: jest.fn(async ({ data }: { data: { id: string } }) => {
+                  staged.processedEvents.add(data.id);
+                  return data;
+                }),
+              },
+              user: { upsert: jest.fn().mockResolvedValue({}) },
+              investment: {
+                create: jest.fn(async ({ data }: { data: { id: string } }) => {
+                  if (staged.investments.has(data.id)) {
+                    throw new Error('duplicate investment');
+                  }
+                  staged.investments.add(data.id);
+                  return data;
+                }),
+              },
+              campaign: {
+                update: jest.fn(
+                  async ({
+                    data,
+                  }: {
+                    data: { totalFunded: { increment: bigint } };
+                  }) => {
+                    if (failCampaignUpdate) {
+                      throw new Error('transient campaign update failure');
+                    }
+                    staged.totalFunded += data.totalFunded.increment;
+                    return data;
+                  },
+                ),
+              },
+            };
+
+            const result = await callback(tx);
+            state = staged;
+            return result;
+          },
+        ),
+      };
+      const atomicService = new EventParserService(atomicPrisma as any);
+      const evt = rawEvent(
+        'e2-atomic',
+        ['ContribReceived', CAMPAIGN_ID],
+        [INVESTOR, 1700000000n, 250n],
+      );
+
+      await atomicService.processEvent(evt);
+
+      expect(state.investments.size).toBe(0);
+      expect(state.processedEvents.size).toBe(0);
+      expect(state.totalFunded).toBe(0n);
+
+      failCampaignUpdate = false;
+      await atomicService.processEvent(evt);
+      await atomicService.processEvent(evt);
+
+      expect(state.investments).toEqual(new Set(['e2-atomic']));
+      expect(state.processedEvents).toEqual(new Set(['e2-atomic']));
+      expect(state.totalFunded).toBe(250n);
     });
   });
 
