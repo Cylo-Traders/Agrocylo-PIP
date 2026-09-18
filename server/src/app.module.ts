@@ -12,6 +12,7 @@ import { IndexerModule } from './indexer/indexer.module';
 import { DatabaseModule } from './database/database.module';
 import { WebsocketModule } from './websocket/websocket.module';
 import { CampaignsModule } from './modules/campaigns/campaigns.module';
+import { TransactionCleanupModule } from './modules/transaction-cleanup/transaction-cleanup.module';
 import { InvestorsModule } from './modules/investors/investors.module';
 
 /**
@@ -40,6 +41,7 @@ import { InvestorsModule } from './modules/investors/investors.module';
     IndexerModule,
     CampaignsModule,
     InvestorsModule,
+    TransactionCleanupModule,
   ],
   providers: [
     {
