@@ -7,6 +7,7 @@ export { CreateCampaignPage } from './CreateCampaignPage';
 export { AdminDashboardPage } from './AdminDashboardPage';
 export { ActivityFeedPage } from './ActivityFeedPage';
 export { FarmerProfilePage } from './FarmerProfilePage';
+export { InvestorDashboardPage } from './InvestorDashboardPage';
 
 type PlaceholderPageProps = {
   eyebrow: string;
@@ -61,16 +62,7 @@ export function FarmerDashboardPage() {
   );
 }
 
-export function InvestorDashboardPage() {
-  return (
-    <PlaceholderPage
-      eyebrow="Dashboard"
-      title="Investor dashboard"
-      description="Monitor your agricultural investments, campaign progress, and returns."
-    />
-  );
-}
-
+// InvestorDashboardPage is the real implementation exported from ./InvestorDashboardPage
 // ActivityFeedPage is the real implementation exported from ./ActivityFeedPage
 // FarmerProfilePage is the real implementation exported from ./FarmerProfilePage
 

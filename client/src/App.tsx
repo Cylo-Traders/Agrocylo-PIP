@@ -9,6 +9,9 @@ import { ActivityFeedPage } from './pages/ActivityFeedPage';
 import { CampaignDetailPage } from './pages/CampaignDetailPage';
 import { CampaignsPage } from './pages/CampaignsPage';
 import { FarmerProfilePage } from './pages/FarmerProfilePage';
+import { InvestorDashboardPage } from './pages/InvestorDashboardPage';
+import { CreateCampaignPage } from './pages/CreateCampaignPage';
+import { FarmerDashboardPage, NotFoundPage } from './pages';
 import './App.css';
 
 export default function App() {
@@ -55,9 +58,18 @@ export default function App() {
       <Route element={<AppLayout />}>
         <Route path="/activity" element={<ActivityFeedPage />} />
         <Route path="/campaigns" element={<CampaignsPage />} />
+        <Route path="/campaigns/new" element={<CreateCampaignPage />} />
         <Route path="/campaigns/:id" element={<CampaignDetailPage />} />
         <Route path="/profile" element={<FarmerProfilePage />} />
         <Route path="/farmers/:address" element={<FarmerProfilePage />} />
+
+        {/* Dashboard routes — these are the targets of the AppLayout nav links */}
+        <Route path="/dashboard/farmer" element={<FarmerDashboardPage />} />
+        <Route path="/dashboard/investor" element={<InvestorDashboardPage />} />
+        <Route path="/dashboard/admin" element={<AdminDashboardPage />} />
+
+        {/* Catch-all: renders the existing NotFoundPage instead of a blank screen */}
+        <Route path="*" element={<NotFoundPage />} />
       </Route>
     </Routes>
   );
