@@ -4,6 +4,7 @@ import {
   ConfigModule as NestConfigModule,
   ConfigService,
 } from '@nestjs/config';
+import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { ConfigModule } from './config/config.module';
 import { LoggerModule } from './common/logger/logger.module';
@@ -22,6 +23,7 @@ import { InvestorsModule } from './modules/investors/investors.module';
   imports: [
     ConfigModule,
     LoggerModule,
+    ScheduleModule.forRoot(),
     ThrottlerModule.forRootAsync({
       imports: [NestConfigModule],
       inject: [ConfigService],
