@@ -73,24 +73,27 @@ export const OpenDisputeModal: React.FC<OpenDisputeModalProps> = ({
   const remaining = DISPUTE_REASON_MAX_LENGTH - reason.trim().length;
 
   return (
-    <Modal isOpen={isOpen} onClose={handleClose} title="Open a dispute" size="md">
+    <Modal
+      isOpen={isOpen}
+      onClose={handleClose}
+      title="Open a dispute"
+      size="md"
+    >
       <form onSubmit={handleSubmit} className="space-y-4">
-        <p className="text-sm text-slate-600 dark:text-slate-300">
+        <p className="text-sm text-soil-600">
           You are opening a dispute on{' '}
-          <span className="font-semibold text-slate-900 dark:text-white">
-            {campaignTitle}
-          </span>{' '}
+          <span className="font-semibold text-soil-900">{campaignTitle}</span>{' '}
           as the {ROLE_LABEL[role]}. This moves the campaign to{' '}
-          <span className="font-semibold">Disputed</span> and pauses fund
-          release until an admin resolves it.
+          <span className="font-semibold text-soil-900">Disputed</span> and
+          pauses fund release until an admin resolves it.
         </p>
 
         <div className="space-y-1">
           <label
             htmlFor="dispute-reason"
-            className="block text-sm font-medium text-slate-900 dark:text-white"
+            className="block text-sm font-medium text-soil-900"
           >
-            Reason <span className="text-red-600">*</span>
+            Reason <span className="text-status-failed-dark">*</span>
           </label>
           <textarea
             id="dispute-reason"
@@ -105,9 +108,9 @@ export const OpenDisputeModal: React.FC<OpenDisputeModalProps> = ({
             aria-invalid={error ? 'true' : undefined}
             aria-describedby={error ? 'dispute-reason-error' : undefined}
             placeholder="Describe the issue with this campaign…"
-            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-slate-900 shadow-sm focus:border-emerald-600 focus:outline-none focus:ring-1 focus:ring-emerald-600 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+            className="w-full rounded-xl border border-soil-300 bg-white px-3 py-2 text-soil-900 shadow-sm focus:border-leaf-500 focus:outline-none focus:ring-1 focus:ring-leaf-500"
           />
-          <div className="flex justify-between text-xs text-slate-500">
+          <div className="flex justify-between text-xs text-soil-500">
             <span>Required — this is stored on-chain.</span>
             <span>{remaining} characters left</span>
           </div>
@@ -117,25 +120,25 @@ export const OpenDisputeModal: React.FC<OpenDisputeModalProps> = ({
           <p
             id="dispute-reason-error"
             role="alert"
-            className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950 dark:text-red-300"
+            className="rounded-xl border border-status-failed bg-status-failed-light p-3 text-sm text-status-failed-dark"
           >
             {error}
           </p>
         )}
 
-        <div className="flex justify-end gap-3 border-t border-slate-100 pt-4 dark:border-slate-800">
+        <div className="flex justify-end gap-3 border-t border-soil-100 pt-4">
           <button
             type="button"
             onClick={handleClose}
             disabled={openDispute.isPending}
-            className="rounded-xl px-4 py-2 font-medium text-slate-700 transition hover:bg-slate-100 disabled:opacity-50 dark:text-slate-300 dark:hover:bg-slate-800"
+            className="rounded-xl border border-soil-300 px-4 py-2 font-medium text-soil-700 transition hover:bg-soil-50 disabled:opacity-50"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={openDispute.isPending}
-            className="rounded-xl bg-red-700 px-5 py-2 font-semibold text-white shadow-md transition hover:bg-red-800 disabled:opacity-50"
+            className="rounded-xl bg-status-failed px-5 py-2 font-semibold text-white shadow-md transition hover:bg-status-failed-dark disabled:opacity-50"
           >
             {openDispute.isPending ? 'Opening dispute…' : 'Open dispute'}
           </button>

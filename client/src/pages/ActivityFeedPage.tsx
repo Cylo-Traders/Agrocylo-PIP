@@ -125,7 +125,7 @@ export function ActivityFeedPage() {
           }}
         >
           Enter one or more campaign IDs above to view activity, or configure{' '}
-          <code className="rounded bg-slate-100 px-1 py-0.5 text-xs">
+          <code className="rounded bg-soil-100 px-1 py-0.5 text-xs text-soil-800">
             VITE_KNOWN_CAMPAIGN_IDS
           </code>{' '}
           to preload the global feed.

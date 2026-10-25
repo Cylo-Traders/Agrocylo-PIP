@@ -27,6 +27,12 @@ vi.mock('../../components/campaign/FundCampaignModal', () => ({
   ),
 }));
 
+vi.mock('../../components/campaign/OpenDisputeForm', () => ({
+  OpenDisputeForm: () => (
+    <div data-testid="open-dispute-form">Open Dispute Form Component</div>
+  ),
+}));
+
 describe('CampaignDetailPage', () => {
   let queryClient: QueryClient;
 
