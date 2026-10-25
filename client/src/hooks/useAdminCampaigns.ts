@@ -1,5 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
-import { loadRecentEscrowEvents } from '../lib/soroban/events';
+import {
+  loadRecentEscrowEvents,
+  DEFAULT_LOOKBACK_LEDGERS,
+} from '../lib/soroban/events';
 import { contractMethod, getEscrowClient } from '../lib/soroban/contractClient';
 import {
   ESCROW_CONTRACT_ID,
@@ -8,44 +11,74 @@ import {
 } from '../lib/soroban/config';
 import { contractQueryKeys } from './contract/queryKeys';
 import { ACTIONABLE_STATUSES } from '../lib/campaignStatus';
+import { isBackendApiEnabled } from '../lib/api/config';
+import { getCampaigns } from '../lib/api/client';
 import type { Campaign } from '../lib/soroban/types';
 
-const DEFAULT_LOOKBACK_LEDGERS = 120_000;
-
-const LOOKBACK_LEDGERS = (() => {
+export const LOOKBACK_LEDGERS = (() => {
   const parsed = Number(import.meta.env.VITE_SOROBAN_EVENTS_LOOKBACK_LEDGERS);
   return Number.isFinite(parsed) && parsed > 0
     ? parsed
     : DEFAULT_LOOKBACK_LEDGERS;
 })();
 
-export { ACTIONABLE_STATUSES };
+export { DEFAULT_LOOKBACK_LEDGERS, ACTIONABLE_STATUSES };
 
 export interface AdminCampaignOverview {
   id: string;
   campaign: Campaign;
 }
 
+export interface UseAdminCampaignsOptions {
+  lookbackLedgers?: number;
+  useBackendFallback?: boolean;
+}
+
 /**
  * Discovers campaigns from ProductionEscrowContract event history (there is
  * no on-chain "list all campaigns" getter) and fetches their current state,
- * filtered to campaigns where an admin action is still applicable. Mirrors
- * the event-scanning approach in hooks/useCampaignAnalytics.ts.
+ * filtered to campaigns where an admin action is still applicable.
+ *
+ * When backend API indexing is enabled (or requested via `useBackendFallback`),
+ * it also queries the backend index to surface older campaigns outside the
+ * event lookback window.
  */
-export function useAdminCampaigns() {
+export function useAdminCampaigns(options?: UseAdminCampaignsOptions) {
+  const lookback = options?.lookbackLedgers ?? LOOKBACK_LEDGERS;
+  const useBackend = options?.useBackendFallback ?? isBackendApiEnabled();
+
   return useQuery({
-    queryKey: contractQueryKeys.adminCampaignsOverview(),
+    queryKey: [
+      ...contractQueryKeys.adminCampaignsOverview(),
+      lookback,
+      useBackend,
+    ],
     enabled: isEscrowConfigured(),
     queryFn: async (): Promise<AdminCampaignOverview[]> => {
       const events = await loadRecentEscrowEvents({
         rpcUrl: RPC_URL!,
         contractId: ESCROW_CONTRACT_ID!,
-        lookbackLedgers: LOOKBACK_LEDGERS,
+        lookbackLedgers: lookback,
       });
 
-      const campaignIds = Array.from(
-        new Set(events.map((event) => event.campaignId).filter(Boolean)),
+      const discoveredIds = new Set(
+        events.map((event) => event.campaignId).filter(Boolean),
       );
+
+      // Tier 4 Strategy: When backend API is available, merge known campaign IDs
+      // to surface campaigns older than the event lookback window.
+      if (useBackend) {
+        try {
+          const backendCampaigns = await getCampaigns();
+          for (const c of backendCampaigns) {
+            if (c.id) discoveredIds.add(c.id);
+          }
+        } catch {
+          // Backend discovery is best-effort fallback; don't fail event-based load.
+        }
+      }
+
+      const campaignIds = Array.from(discoveredIds);
 
       const client = await getEscrowClient();
       const overviews = await Promise.all(

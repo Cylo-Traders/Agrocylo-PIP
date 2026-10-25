@@ -1,9 +1,11 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import Header from '../components/Header';
 import { useWallet } from '../context/WalletContext';
 import { useEscrowAdmin } from '../hooks/contract';
 import {
   useAdminCampaigns,
+  LOOKBACK_LEDGERS,
   type AdminCampaignOverview,
 } from '../hooks/useAdminCampaigns';
 import { isEscrowConfigured } from '../lib/soroban/config';
@@ -74,7 +76,11 @@ function AdminOverview({ campaigns }: { campaigns: AdminCampaignOverview[] }) {
 export function AdminDashboardPage() {
   const wallet = useWallet();
   const adminQuery = useEscrowAdmin();
-  const campaignsQuery = useAdminCampaigns();
+  const [lookbackMultiplier, setLookbackMultiplier] = useState(1);
+  const effectiveLookback = (LOOKBACK_LEDGERS ?? 120_000) * lookbackMultiplier;
+  const campaignsQuery = useAdminCampaigns({
+    lookbackLedgers: effectiveLookback,
+  });
 
   const configured = isEscrowConfigured();
   const isAdmin =
@@ -150,6 +156,46 @@ export function AdminDashboardPage() {
 
       {isAdmin && (
         <div className="space-y-6">
+          <div
+            role="region"
+            aria-label="Campaign discovery lookback notice"
+            className="rounded-campaign border border-leaf-200 bg-leaf-50/60 p-4 sm:p-5"
+          >
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span
+                    className="inline-block h-2.5 w-2.5 rounded-full bg-leaf-600"
+                    aria-hidden="true"
+                  />
+                  <h2 className="text-body-sm font-semibold text-soil-900">
+                    Campaign Discovery: Lookback Window Active (
+                    {effectiveLookback.toLocaleString()} ledgers)
+                  </h2>
+                </div>
+                <p className="mt-1 text-caption text-soil-600">
+                  Showing actionable campaigns discovered from events in the
+                  trailing ~{effectiveLookback.toLocaleString()} ledgers (~
+                  {Math.round((effectiveLookback * 5) / 86400)} days). Campaigns
+                  created prior to this window may not appear without backend
+                  indexing or expanded lookback.
+                </p>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setLookbackMultiplier((prev) => prev + 1)}
+                  disabled={campaignsQuery.isFetching}
+                  className="rounded-md border border-leaf-300 bg-white px-3 py-1.5 text-xs font-semibold text-leaf-800 hover:bg-leaf-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-leaf-500 disabled:opacity-50"
+                >
+                  {campaignsQuery.isFetching
+                    ? 'Scanning...'
+                    : `Load older history (+${(LOOKBACK_LEDGERS ?? 120_000).toLocaleString()} ledgers)`}
+                </button>
+              </div>
+            </div>
+          </div>
+
           {campaignsQuery.isLoading && (
             <div aria-busy="true">
               <DashboardRowsSkeleton count={3} />
