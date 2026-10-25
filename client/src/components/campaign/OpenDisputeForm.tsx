@@ -18,9 +18,13 @@ const labelClass = 'mb-1 block text-label text-soil-500';
 const errorClass = 'mt-1 text-caption text-status-failed-dark';
 const sectionTitleClass = 'text-h4 text-soil-900';
 
-function ActionError({ message }: { message: string | null }) {
+function ActionError({ message, id }: { message: string | null; id?: string }) {
   if (!message) return null;
-  return <p className={errorClass}>{message}</p>;
+  return (
+    <p id={id} role="alert" className={errorClass}>
+      {message}
+    </p>
+  );
 }
 
 export interface OpenDisputeFormProps {
@@ -106,8 +110,13 @@ export function OpenDisputeForm({
             className={inputClass}
             rows={3}
             value={reason}
-            onChange={(e) => setReason(e.target.value)}
+            onChange={(e) => {
+              setReason(e.target.value);
+              if (formError) setFormError(null);
+            }}
             placeholder="Describe why you're opening this dispute…"
+            aria-invalid={formError ? 'true' : undefined}
+            aria-describedby={formError ? 'dispute-reason-error' : undefined}
           />
         </div>
         <button
@@ -117,9 +126,9 @@ export function OpenDisputeForm({
         >
           {openDispute.isPending ? 'Confirm in wallet…' : 'Open dispute'}
         </button>
-        <ActionError message={formError} />
+        <ActionError id="dispute-reason-error" message={formError} />
         {success && (
-          <p className="text-caption text-status-active-dark">
+          <p role="status" className="text-caption text-status-active-dark">
             Dispute opened.
           </p>
         )}

@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { FundCampaignModal } from '../components/campaign/FundCampaignModal';
-import { OpenDisputeModal } from '../components/campaign/OpenDisputeModal';
 import {
   DisputeDetailsCard,
   type DisputeSummary,
@@ -12,18 +11,11 @@ import { OpenDisputeForm } from '../components/campaign/OpenDisputeForm';
 import { useCampaignLiveUpdates } from '../hooks/useCampaignLiveUpdates';
 import { useCampaign } from '../hooks/contract/useEscrowQueries';
 import { DetailPageSkeleton } from '../components/ui/Skeleton/Skeleton';
-import { useWallet } from '../context/WalletContext';
-import { useContribution, useEscrowAdmin } from '../hooks/contract';
-import { evaluateDisputeEligibility } from '../lib/dispute/eligibility';
-import type { CampaignStatusTag } from '../lib/soroban/types';
 
 export const CampaignDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isDisputeModalOpen, setIsDisputeModalOpen] = useState(false);
-  const [dispute, setDispute] = useState<DisputeSummary | null>(null);
-
-  const { publicKey } = useWallet();
+  const [dispute] = useState<DisputeSummary | null>(null);
 
   const { data: campaign, isLoading, isError, refetch } = useCampaign(id);
 
@@ -74,18 +66,6 @@ export const CampaignDetailPage: React.FC = () => {
 
   const handleFundingSuccess = () => {
     void refetch();
-  };
-
-  // Reflect the new state immediately rather than waiting for the indexer:
-  // the contract has already accepted the dispute at this point.
-  const handleDisputeSuccess = (reason: string) => {
-    setCampaign((prev) => (prev ? { ...prev, status: 'Disputed' } : prev));
-    setDispute({
-      opener: publicKey!,
-      reason,
-      timestamp: Math.floor(Date.now() / 1000),
-      status: 'Open',
-    });
   };
 
   return (
@@ -160,10 +140,7 @@ export const CampaignDetailPage: React.FC = () => {
         />
       </div>
 
-      <OpenDisputeForm
-        campaignId={campaign.id}
-        farmerAddress={campaign.farmer}
-      />
+      <OpenDisputeForm campaignId={id} farmerAddress={campaign.farmer} />
     </div>
   );
 };

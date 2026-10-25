@@ -142,7 +142,9 @@ describe('validateDisputeReason', () => {
   });
 
   it('rejects a reason over the length cap', () => {
-    const result = validateDisputeReason('x'.repeat(DISPUTE_REASON_MAX_LENGTH + 1));
+    const result = validateDisputeReason(
+      'x'.repeat(DISPUTE_REASON_MAX_LENGTH + 1),
+    );
     expect(result.valid).toBe(false);
     expect(result.error).toMatch(/characters or fewer/i);
   });

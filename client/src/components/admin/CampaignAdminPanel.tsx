@@ -57,9 +57,13 @@ function isValidAddress(value: string): boolean {
   return StrKey.isValidEd25519PublicKey(value) || StrKey.isValidContract(value);
 }
 
-function ActionError({ message }: { message: string | null }) {
+function ActionError({ message, id }: { message: string | null; id?: string }) {
   if (!message) return null;
-  return <p className={errorClass}>{message}</p>;
+  return (
+    <p id={id} role="alert" className={errorClass}>
+      {message}
+    </p>
+  );
 }
 
 // ─── Configure tranches ──────────────────────────────────────────────────────
@@ -198,9 +202,9 @@ function ConfigureTranchesForm({
             : 'Configure tranches'}
         </button>
       </div>
-      <ActionError message={formError} />
+      <ActionError id="configure-tranches-error" message={formError} />
       {success && (
-        <p className="text-caption text-status-active-dark">
+        <p role="status" className="text-caption text-status-active-dark">
           Tranches configured.
         </p>
       )}
@@ -296,9 +300,9 @@ function ReleaseTrancheForm({
       >
         {releaseTranche.isPending ? 'Confirm in wallet…' : 'Release tranche'}
       </button>
-      <ActionError message={formError} />
+      <ActionError id="release-tranche-error" message={formError} />
       {success && (
-        <p className="text-caption text-status-active-dark">
+        <p role="status" className="text-caption text-status-active-dark">
           Tranche released.
         </p>
       )}
@@ -372,9 +376,10 @@ function ResolveDisputeForm({
           id="dispute-resolution"
           className={inputClass}
           value={resolution}
-          onChange={(e) =>
-            setResolution(e.target.value as DisputeResolutionTag)
-          }
+          onChange={(e) => {
+            setResolution(e.target.value as DisputeResolutionTag);
+            if (formError) setFormError(null);
+          }}
         >
           {RESOLUTION_OPTIONS.map((opt) => (
             <option key={opt.value} value={opt.value}>
@@ -393,10 +398,19 @@ function ResolveDisputeForm({
             className={inputClass}
             inputMode="numeric"
             value={payoutAmount}
-            onChange={(e) => setPayoutAmount(e.target.value)}
+            onChange={(e) => {
+              setPayoutAmount(e.target.value);
+              if (formError) setFormError(null);
+            }}
             placeholder="1000"
+            aria-invalid={formError ? 'true' : undefined}
+            aria-describedby={
+              formError
+                ? 'resolve-dispute-error dispute-payout-hint'
+                : 'dispute-payout-hint'
+            }
           />
-          <p className={hintClass}>
+          <p id="dispute-payout-hint" className={hintClass}>
             Must be greater than zero and less than {heldAmount.toString()}.
           </p>
         </div>
@@ -408,9 +422,9 @@ function ResolveDisputeForm({
       >
         {resolveDispute.isPending ? 'Confirm in wallet…' : 'Resolve dispute'}
       </button>
-      <ActionError message={formError} />
+      <ActionError id="resolve-dispute-error" message={formError} />
       {success && (
-        <p className="text-caption text-status-active-dark">
+        <p role="status" className="text-caption text-status-active-dark">
           Dispute resolved.
         </p>
       )}
@@ -497,9 +511,9 @@ function SettleCampaignForm({
       >
         {settleCampaign.isPending ? 'Confirm in wallet…' : 'Settle campaign'}
       </button>
-      <ActionError message={formError} />
+      <ActionError id="settle-campaign-error" message={formError} />
       {success && (
-        <p className="text-caption text-status-active-dark">
+        <p role="status" className="text-caption text-status-active-dark">
           Campaign settled.
         </p>
       )}
@@ -564,9 +578,9 @@ function MarkFailedForm({ campaignId }: { campaignId: string }) {
           Mark campaign as failed
         </button>
       )}
-      <ActionError message={formError} />
+      <ActionError id="mark-failed-error" message={formError} />
       {success && (
-        <p className="text-caption text-status-active-dark">
+        <p role="status" className="text-caption text-status-active-dark">
           Campaign marked as failed.
         </p>
       )}
